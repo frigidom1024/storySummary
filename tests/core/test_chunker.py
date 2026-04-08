@@ -26,3 +26,11 @@ class TestChapterChunker:
         assert len(chunks) == 2
         assert chunks[0].chapter == "Chapter 1"
         assert chunks[1].chapter == "Chapter 2"
+
+    def test_extracts_chapters_with_roman_numerals(self):
+        text = "Chapter I\n\nContent one.\n\nChapter IV\n\nContent two."
+        chunker = ChapterChunker()
+        chunks = chunker.chunk(text)
+        assert len(chunks) == 2
+        assert chunks[0].chapter == "Chapter I"
+        assert chunks[1].chapter == "Chapter IV"

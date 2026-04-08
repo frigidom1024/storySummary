@@ -22,7 +22,11 @@ class TextChunker:
 
 
 class ChapterChunker:
-    CHAPTER_PATTERN = re.compile(r'^Chapter\s+(\d+|[IVXLC]+)\s*$', re.MULTILINE | re.IGNORECASE)
+    # Matches "Chapter N" where N is Arabic numerals or Roman numerals (I, II, III, IV, V, VI, VII, VIII, IX, X, etc.)
+    CHAPTER_PATTERN = re.compile(
+        r'^Chapter\s+(\d+|M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}))\s*$',
+        re.MULTILINE | re.IGNORECASE
+    )
 
     def chunk(self, text: str) -> list[Chunk]:
         lines = text.split("\n")
