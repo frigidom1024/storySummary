@@ -1,10 +1,12 @@
 import asyncio
 import argparse
+import logging
 from pathlib import Path
 import os
 import json
 from dotenv import load_dotenv
 from src.pipeline import NovelToPodcastPipeline
+from src.logging_config import setup_logger
 
 
 async def main():
@@ -15,8 +17,15 @@ async def main():
     parser.add_argument("--db", type=Path, default=Path("story_data.db"), help="Database path")
     parser.add_argument("--vector-store", type=Path, default=Path("vector_store"), help="Vector store path")
     parser.add_argument("--model", type=str, default=None, help="LLM model (e.g., deepseek-chat, gpt-4o)")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
+    parser.add_argument("--log-file", type=Path, default=None, help="Log file path")
 
     args = parser.parse_args()
+
+    # Setup logging
+    log_level = getattr(logging, args.log_level)
+    log_file = str(args.log_file) if args.log_file else None
+    logger = setup_logger(level=log_level, log_file=log_file)
 
     load_dotenv()
 
@@ -36,9 +45,7 @@ async def main():
 
     if args.output:
         args.output.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
-
-    print(f"Processed {len(result['nodes'])} nodes")
-    print(f"Structure: {result['structure'].model_dump()}")
+        logger.info(f"Output saved to {args.output}")
 
 
 if __name__ == "__main__":
