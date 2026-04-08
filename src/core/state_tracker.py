@@ -4,7 +4,7 @@ from src.models.narrative_node import NarrativeNode
 class StateTracker:
     def track(self, prev_node: NarrativeNode, curr_node: NarrativeNode) -> str:
         """Calculate state delta between two nodes."""
-        if not prev_node:
+        if prev_node is None:
             return ""
 
         deltas = []
