@@ -2,14 +2,14 @@ import pytest
 import tempfile
 import shutil
 import os
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
+from langchain_core.messages import AIMessage
 from src.pipeline import NovelToPodcastPipeline
 
 
 class TestPipeline:
     @pytest.mark.asyncio
-    @patch('src.core.node_generator.AsyncOpenAI')
-    async def test_full_pipeline_multi_beat(self, mock_openai_class):
+    async def test_full_pipeline_multi_beat(self):
         # Use temp directories for ChromaDB (doesn't support :memory: for PersistentClient)
         temp_dir = tempfile.mkdtemp()
         db_path = tempfile.mktemp(suffix='.db')
@@ -29,20 +29,13 @@ class TestPipeline:
             """
 
             # Multi-beat returns a list of nodes
-            mock_response = MagicMock()
-            mock_response.choices = [
-                MagicMock(
-                    message=MagicMock(
-                        content='''[
-                          {"id":"n-0001-0","parent_chunk_id":"chunk-0000","beat_index":0,"scene":"A dark room","characters":[{"name":"John","state":"scared","goal":"find light"}],"event":"John enters dark room","dialogue_summary":"","tension":"danger","stakes":"life","foreshadow":"","narrative_role":"opening"},
-                          {"id":"n-0001-1","parent_chunk_id":"chunk-0000","beat_index":1,"scene":"A dark room","characters":[{"name":"John","state":"terrified","goal":"identify noise"}],"event":"John hears a noise","dialogue_summary":"","tension":"immediate threat","stakes":"life","foreshadow":"","narrative_role":"rising"}
-                        ]'''
-                    )
-                )
-            ]
+            mock_content = '''[
+              {"id":"n-0001-0","parent_chunk_id":"chunk-0000","beat_index":0,"scene":"A dark room","characters":[{"name":"John","state":"scared","goal":"find light"}],"event":"John enters dark room","dialogue_summary":"","tension":"danger","stakes":"life","foreshadow":"","narrative_role":"opening"},
+              {"id":"n-0001-1","parent_chunk_id":"chunk-0000","beat_index":1,"scene":"A dark room","characters":[{"name":"John","state":"terrified","goal":"identify noise"}],"event":"John hears a noise","dialogue_summary":"","tension":"immediate threat","stakes":"life","foreshadow":"","narrative_role":"rising"}
+            ]'''
 
-            with patch.object(pipeline.node_generator.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-                mock_create.return_value = mock_response
+            with patch('langchain_openai.chat_models.base.ChatOpenAI.ainvoke', new_callable=AsyncMock) as mock_ainvoke:
+                mock_ainvoke.return_value = AIMessage(content=mock_content)
                 result = await pipeline.process(novel_text, title="Test Story")
 
             # Should have 2 nodes from 1 chunk (multi-beat)

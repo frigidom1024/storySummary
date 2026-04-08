@@ -1,15 +1,18 @@
-from openai import AsyncOpenAI
+import os
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 from src.models.narrative_node import NarrativeNode
 from src.storage.vector_store import VectorStore
 from src.core.prompts import PODCAST_GENERATION_PROMPT
 from src.core.detail_recovery import DetailRecovery
+from src.core.node_generator import create_llm
 
 
 class PodcastGenerator:
-    def __init__(self, api_key: str, vector_store: VectorStore = None):
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str = None, vector_store: VectorStore = None, model: str = None):
+        self.llm = create_llm(api_key=api_key, model=model, temperature=0.8, max_tokens=800)
         self.vector_store = vector_store
-        self.detail_recovery = DetailRecovery(api_key)
+        self.detail_recovery = DetailRecovery(api_key=api_key, model=model)
 
     def _format_characters(self, node: NarrativeNode) -> str:
         return ", ".join([
@@ -57,14 +60,10 @@ class PodcastGenerator:
         if context:
             prompt = context + "\n\n" + prompt
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a professional podcast storyteller."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.8,
-            max_tokens=800
-        )
+        messages = [
+            SystemMessage(content="You are a professional podcast storyteller."),
+            HumanMessage(content=prompt)
+        ]
 
-        return response.choices[0].message.content.strip()
+        response = await self.llm.ainvoke(messages)
+        return response.content.strip()

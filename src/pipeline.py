@@ -15,11 +15,13 @@ class NovelToPodcastPipeline:
         self,
         db_path: str,
         vector_store_path: str,
-        api_key: str
+        api_key: str = None,
+        model: str = None
     ):
         self.api_key = api_key
+        self.model = model
         self.chunker = ChapterChunker()
-        self.node_generator = NarrativeNodeGenerator(api_key)
+        self.node_generator = NarrativeNodeGenerator(api_key=api_key, model=model)
         self.structure_builder = StructureBuilder()
         self.state_tracker = StateTracker()
         self.db = Database(db_path)

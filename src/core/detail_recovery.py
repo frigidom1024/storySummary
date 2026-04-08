@@ -1,10 +1,13 @@
-from openai import AsyncOpenAI
+import os
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 from src.core.prompts import DETAIL_RECOVERY_PROMPT
+from src.core.node_generator import create_llm
 
 
 class DetailRecovery:
-    def __init__(self, api_key: str):
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str = None, model: str = None):
+        self.llm = create_llm(api_key=api_key, model=model, temperature=0.6, max_tokens=300)
 
     async def enrich(
         self,
@@ -20,14 +23,10 @@ class DetailRecovery:
             excerpt=excerpt
         )
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You enrich narrative summaries with vivid sensory details."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.6,
-            max_tokens=300
-        )
+        messages = [
+            SystemMessage(content="You enrich narrative summaries with vivid sensory details."),
+            HumanMessage(content=prompt)
+        ]
 
-        return response.choices[0].message.content.strip()
+        response = await self.llm.ainvoke(messages)
+        return response.content.strip()

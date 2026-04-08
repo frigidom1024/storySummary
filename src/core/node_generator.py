@@ -1,14 +1,31 @@
 import json
 import re
-from openai import AsyncOpenAI
+import os
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterState
 from src.core.prompts import MULTI_BEAT_NODE_PROMPT
 
 
+def create_llm(api_key: str = None, model: str = None, **kwargs) -> ChatOpenAI:
+    """Create LLM client with DeepSeek or OpenAI compatibility."""
+    api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+    api_base = os.getenv("DEEPSEEK_API_BASE") or os.getenv("OPENAI_API_BASE")
+
+    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+
+    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
+    if api_base:
+        llm_kwargs["openai_api_base"] = api_base
+
+    return ChatOpenAI(**llm_kwargs)
+
+
 class NarrativeNodeGenerator:
-    def __init__(self, api_key: str):
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str = None, model: str = None):
+        self.model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+        self.llm = create_llm(api_key=api_key, model=self.model, temperature=0.7, max_tokens=2000)
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
         """Generate MULTIPLE narrative beats from ONE chunk."""
@@ -17,17 +34,13 @@ class NarrativeNodeGenerator:
             chunk_order=chunk.order
         )
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a narrative analyst that outputs valid JSON array."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=2000
-        )
+        messages = [
+            SystemMessage(content="You are a narrative analyst that outputs valid JSON array."),
+            HumanMessage(content=prompt)
+        ]
 
-        content = response.choices[0].message.content.strip()
+        response = await self.llm.ainvoke(messages)
+        content = response.content.strip()
 
         # Try to extract JSON array from markdown code blocks or raw content
         try:

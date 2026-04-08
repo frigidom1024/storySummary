@@ -14,6 +14,7 @@ async def main():
     parser.add_argument("--output", type=Path, help="Output JSON path")
     parser.add_argument("--db", type=Path, default=Path("story_data.db"), help="Database path")
     parser.add_argument("--vector-store", type=Path, default=Path("vector_store"), help="Vector store path")
+    parser.add_argument("--model", type=str, default=None, help="LLM model (e.g., deepseek-chat, gpt-4o)")
 
     args = parser.parse_args()
 
@@ -21,10 +22,14 @@ async def main():
 
     text = args.input_file.read_text(encoding="utf-8")
 
+    # Support both DeepSeek and OpenAI
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+
     pipeline = NovelToPodcastPipeline(
         db_path=str(args.db),
         vector_store_path=str(args.vector_store),
-        api_key=os.getenv("OPENAI_API_KEY")
+        api_key=api_key,
+        model=args.model
     )
 
     result = await pipeline.process(text, title=args.title)
