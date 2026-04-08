@@ -8,10 +8,12 @@ from src.models.story_structure import StoryStructure
 class Database:
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._conn = None
         self._init_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=1) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS nodes (
                     id TEXT PRIMARY KEY,
