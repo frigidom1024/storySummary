@@ -1,0 +1,17 @@
+[project]
+name = "story-summary"
+version = "0.1.0"
+description = "Convert novels to podcast-ready narrative structures"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "chromadb>=0.4.0",
+    "openai>=1.0",
+    "python-dotenv>=1.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
