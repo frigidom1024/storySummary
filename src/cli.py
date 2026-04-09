@@ -13,6 +13,7 @@ async def main():
     parser = argparse.ArgumentParser(description="Convert novels to podcast narratives")
     parser.add_argument("input_file", type=Path, help="Path to novel text file")
     parser.add_argument("--title", required=True, help="Story title")
+    parser.add_argument("--user-id", default="default-user", help="User ID for multi-user isolation")
     parser.add_argument("--output", type=Path, help="Output JSON path")
     parser.add_argument("--db", type=Path, default=Path("story_data.db"), help="Database path")
     parser.add_argument("--vector-store", type=Path, default=Path("vector_store"), help="Vector store path")
@@ -38,7 +39,8 @@ async def main():
         db_path=str(args.db),
         vector_store_path=str(args.vector_store),
         api_key=api_key,
-        model=args.model
+        model=args.model,
+        user_id=args.user_id,
     )
 
     result = await pipeline.process(text, title=args.title)
