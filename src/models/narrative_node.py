@@ -46,5 +46,23 @@ class NarrativeNode(BaseModel):
     prev_node_id: str = ""
     narrative_role: str = ""     # opening, rising, climax, ending
 
+    # === 时间坐标 ===
+    timeline_order: int = 0       # 故事时间顺序（负=回忆/前传，正=主线后）
+    timeline_anchor: str = ""     # 时间锚点："大学时期", "毕业后一年", "现在"
+    is_time_jump: bool = False   # 是否是时间跳跃
+    jump_direction: str = ""     # "past"=跳到过去, "future"=跳到未来
+    jump_label: str = ""         # "插叙", "倒叙", "前传", ""
+
+    # === 叙事线链路 ===
+    thread_id: str = "main"      # 叙事线ID："main", "zhang", "chenwei"
+    thread_name: str = ""        # 叙事线名称："张医生的主线"
+    thread_prev_node_id: str = ""  # 同一条叙事线上的前一个节点
+    thread_next_node_id: str = ""  # 同一条叙事线上的下一个节点
+
+    # === 分支/汇聚 ===
+    branch_from_node: str = ""   # 从哪个节点分出这条支线
+    converges_to_node: str = ""  # 汇聚到哪个节点
+    is_convergence: bool = False # 是否是汇聚点
+
     def to_dict(self) -> dict:
         return self.model_dump()
