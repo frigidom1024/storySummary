@@ -97,8 +97,20 @@ class NarrativeNodeGenerator:
 
         nodes = []
         for beat_dict in beats_list:
-            # Validate dict as Pydantic model
-            beat_data = NarrativeBeatModel.model_validate(beat_dict)
+            try:
+                # Validate dict as Pydantic model
+                beat_data = NarrativeBeatModel.model_validate(beat_dict)
+            except Exception:
+                # Skip beats with invalid data (e.g., missing required fields from LLM)
+                logger.warning(f"Skipping invalid beat: {beat_dict.get('id', 'unknown')}")
+                continue
+
+            # Filter out characters with missing name
+            valid_characters = [
+                CharacterState(name=c.name, state_before=c.state_before)
+                for c in beat_data.characters if c.name
+            ]
+
             node = NarrativeNode(
                 id=beat_data.id,
                 parent_chunk_id=chunk.id,
@@ -106,10 +118,7 @@ class NarrativeNodeGenerator:
                 scene=beat_data.scene,
                 location=beat_data.location,
                 scene_timing=beat_data.scene_timing,
-                characters=[
-                    CharacterState(name=c.name, state_before=c.state_before)
-                    for c in beat_data.characters
-                ],
+                characters=valid_characters,
                 situation=beat_data.situation,
                 turning_point=beat_data.turning_point,
                 emotional_arc=beat_data.emotional_arc,
@@ -118,7 +127,7 @@ class NarrativeNodeGenerator:
                 discussion_prompts=beat_data.discussion_prompts,
                 relationship_delta=[
                     RelationshipStateChange(pair=r.pair, from_state=r.from_state, to_state=r.to_state)
-                    for r in beat_data.relationship_delta
+                    for r in beat_data.relationship_delta if r.pair
                 ],
                 narrative_role=beat_data.narrative_role
             )
