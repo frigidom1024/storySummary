@@ -28,6 +28,12 @@ class NovelToPodcastPipeline:
         self.vector_store = VectorStore(vector_store_path)
         self.title = None
 
+    async def process_file(self, book_path: str) -> dict:
+        """Process a book file (EPUB or PDF) through the pipeline."""
+        from src.utils.book_adapter import read_book
+        reader = read_book(book_path)
+        return await self.process(reader.read(), reader.title)
+
     async def process(self, novel_text: str, title: str) -> dict:
         self.title = title
         logger.info(f"[{title}] Starting pipeline...")
@@ -79,3 +85,33 @@ class NovelToPodcastPipeline:
             "nodes": all_nodes,
             "structure": structure
         }
+
+    async def run_writing_agent(self, chunks: list[Chunk], nodes: list[NarrativeNode], title: str):
+        """Run the podcast writing agent after nodes are generated."""
+        from src.generation.podcast_writing_agent import PodcastWritingAgent
+        agent = PodcastWritingAgent(
+            api_key=self.api_key,
+            model=self.model,
+        )
+        return await agent.run(chunks, nodes, title)
+
+    async def process_full(self, book_path: str):
+        """Run the full pipeline: book → chunks → nodes → podcast manuscript."""
+        from src.utils.book_adapter import read_book
+
+        reader = read_book(book_path)
+        text = reader.read()
+
+        # Existing: chunk + generate nodes
+        chunks = self.chunker.chunk(text)
+        all_nodes = []
+        for chunk in chunks:
+            nodes = await self.node_generator.generate_from_chunk(chunk)
+            if not isinstance(nodes, list):
+                nodes = [nodes]
+            all_nodes.extend(nodes)
+
+        # New: write podcast manuscript
+        manuscript = await self.run_writing_agent(chunks, all_nodes, reader.title)
+
+        return manuscript
