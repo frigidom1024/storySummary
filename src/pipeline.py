@@ -1,4 +1,5 @@
 import logging
+import uuid
 from pathlib import Path
 from src.core.chunker import ChapterChunker
 from src.core.node_generator import NarrativeNodeGenerator
@@ -17,16 +18,34 @@ class NovelToPodcastPipeline:
         db_path: str,
         vector_store_path: str,
         api_key: str = None,
-        model: str = None
+        model: str = None,
+        user_id: str = None,
     ):
         self.api_key = api_key
         self.model = model
+        self.user_id = user_id or "default-user"
         self.chunker = ChapterChunker()
         self.node_generator = NarrativeNodeGenerator(api_key=api_key, model=model)
         self.structure_builder = StructureBuilder()
         self.db = Database(db_path)
         self.vector_store = VectorStore(vector_store_path)
         self.title = None
+        self.book_id = None
+
+    def _ensure_book(self, title: str) -> str:
+        """Ensure a book record exists, return book_id."""
+        if self.book_id is None:
+            # Check if book with this title exists for this user
+            books = self.db.get_books_for_user(self.user_id)
+            for b in books:
+                if b["title"] == title:
+                    self.book_id = b["id"]
+                    break
+            else:
+                # Create new book
+                self.book_id = str(uuid.uuid4())
+                self.db.save_book_metadata(self.book_id, self.user_id, title)
+        return self.book_id
 
     async def process_file(self, book_path: str) -> dict:
         """Process a book file (EPUB or PDF) through the pipeline."""
@@ -36,7 +55,8 @@ class NovelToPodcastPipeline:
 
     async def process(self, novel_text: str, title: str) -> dict:
         self.title = title
-        logger.info(f"[{title}] Starting pipeline...")
+        book_id = self._ensure_book(title)
+        logger.info(f"[{title}] Starting pipeline... (book_id={book_id})")
 
         # 1. Chunk the novel
         logger.info(f"[{title}] Chunking novel...")
@@ -48,6 +68,10 @@ class NovelToPodcastPipeline:
         total_beats = 0
         for i, chunk in enumerate(chunks):
             logger.debug(f"[{title}] Processing chunk {i+1}/{len(chunks)}: {chunk.chapter or 'No chapter'}")
+
+            # Generate chunk_id if not set
+            chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
+
             nodes = await self.node_generator.generate_from_chunk(chunk)
             if not isinstance(nodes, list):
                 nodes = [nodes]
@@ -61,10 +85,14 @@ class NovelToPodcastPipeline:
             for j, node in enumerate(nodes):
                 node.prev_node_id = prev_node.id if prev_node else ""
 
-                # Save to storage
-                self.db.save_node(node)
-                self.db.save_chunk(title, chunk.id, chunk.text)
-                self.vector_store.add_node(node, chunk.text)
+                # Ensure node has an ID
+                if not node.id:
+                    node.id = f"n-{i}-{j}"
+
+                # Save to storage with book_id isolation
+                self.db.save_node(node, book_id)
+                self.db.save_chunk(book_id, chunk_id, chunk.text, chunk.chapter, chunk.order or i)
+                self.vector_store.add_node(node, chunk.text, book_id)
 
                 prev_node = node
                 all_nodes.append(node)
@@ -77,41 +105,61 @@ class NovelToPodcastPipeline:
         logger.info(f"[{title}] Structure: opening={len(structure.opening)}, rising={len(structure.rising)}, climax={len(structure.climax)}, ending={len(structure.ending)}")
 
         # 4. Save structure
-        self.db.save_structure(title, structure)
+        self.db.save_structure(book_id, structure)
         logger.info(f"[{title}] Pipeline complete!")
 
         return {
             "title": title,
+            "book_id": book_id,
             "nodes": all_nodes,
             "structure": structure
         }
 
-    async def run_writing_agent(self, chunks: list[Chunk], nodes: list[NarrativeNode], title: str):
+    async def run_writing_agent(self, chunks: list[Chunk], nodes: list[NarrativeNode], title: str, book_id: str = None):
         """Run the podcast writing agent after nodes are generated."""
         from src.generation.podcast_writing_agent import PodcastWritingAgent
+        if book_id is None:
+            book_id = self._ensure_book(title)
         agent = PodcastWritingAgent(
             api_key=self.api_key,
             model=self.model,
         )
-        return await agent.run(chunks, nodes, title)
+        return await agent.run(chunks, nodes, title, book_id)
 
-    async def process_full(self, book_path: str):
+    async def process_full(self, book_path: str, user_id: str = None):
         """Run the full pipeline: book → chunks → nodes → podcast manuscript."""
         from src.utils.book_adapter import read_book
+
+        if user_id:
+            self.user_id = user_id
 
         reader = read_book(book_path)
         text = reader.read()
 
+        # Ensure book exists
+        book_id = self._ensure_book(reader.title)
+
         # Existing: chunk + generate nodes
         chunks = self.chunker.chunk(text)
         all_nodes = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
             nodes = await self.node_generator.generate_from_chunk(chunk)
             if not isinstance(nodes, list):
                 nodes = [nodes]
-            all_nodes.extend(nodes)
+            for j, node in enumerate(nodes):
+                if not node.id:
+                    node.id = f"n-{i}-{j}"
+                node.prev_node_id = all_nodes[-1].id if all_nodes else ""
+                self.db.save_node(node, book_id)
+                self.db.save_chunk(book_id, chunk_id, chunk.text, chunk.chapter, chunk.order or i)
+                self.vector_store.add_node(node, chunk.text, book_id)
+                all_nodes.append(node)
+
+        structure = self.structure_builder.build(all_nodes)
+        self.db.save_structure(book_id, structure)
 
         # New: write podcast manuscript
-        manuscript = await self.run_writing_agent(chunks, all_nodes, reader.title)
+        manuscript = await self.run_writing_agent(chunks, all_nodes, reader.title, book_id)
 
         return manuscript
