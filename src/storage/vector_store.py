@@ -11,12 +11,16 @@ class VectorStore:
     def add_node(self, node: NarrativeNode, original_text: str):
         self.collection.add(
             ids=[node.id],
-            documents=[f"{node.scene} {node.event} {node.dialogue_summary}"],
+            documents=[f"{node.scene} {node.situation} {node.turning_point}"],
             metadatas=[{
                 "scene": node.scene,
-                "event": node.event,
-                "original_text": original_text,
-                "narrative_role": node.narrative_role
+                "location": node.location,
+                "situation": node.situation,
+                "turning_point": node.turning_point,
+                "emotional_arc": node.emotional_arc,
+                "mood_tone": node.mood_tone,
+                "narrative_role": node.narrative_role,
+                "original_text": original_text
             }]
         )
 

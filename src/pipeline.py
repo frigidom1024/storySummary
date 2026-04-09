@@ -3,7 +3,6 @@ from pathlib import Path
 from src.core.chunker import ChapterChunker
 from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
-from src.core.state_tracker import StateTracker
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
 from src.models.narrative_node import NarrativeNode
@@ -25,7 +24,6 @@ class NovelToPodcastPipeline:
         self.chunker = ChapterChunker()
         self.node_generator = NarrativeNodeGenerator(api_key=api_key, model=model)
         self.structure_builder = StructureBuilder()
-        self.state_tracker = StateTracker()
         self.db = Database(db_path)
         self.vector_store = VectorStore(vector_store_path)
         self.title = None
@@ -56,11 +54,6 @@ class NovelToPodcastPipeline:
 
             for j, node in enumerate(nodes):
                 node.prev_node_id = prev_node.id if prev_node else ""
-
-                # Calculate state delta
-                if prev_node:
-                    node.state_delta = self.state_tracker.track(prev_node, node)
-                    logger.debug(f"[{title}] Node {node.id}: state delta = {node.state_delta[:50]}...")
 
                 # Save to storage
                 self.db.save_node(node)

@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import pytest
 from src.core.state_tracker import StateTracker
 from src.models.narrative_node import NarrativeNode, CharacterState
@@ -9,18 +13,22 @@ class TestStateTracker:
         prev_node = NarrativeNode(
             id="n-1",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light")
+                CharacterState(name="John", state_before="calm")
             ],
-            event="John enters the dark room"
+            situation="John is in a dark room"
         )
         curr_node = NarrativeNode(
             id="n-2",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="scared", goal="survive")
+                CharacterState(name="John", state_before="scared")
             ],
-            event="Something moves in the shadows"
+            situation="John sees something unexpected"
         )
 
         delta = tracker.track(prev_node, curr_node)
@@ -34,19 +42,23 @@ class TestStateTracker:
         prev_node = NarrativeNode(
             id="n-1",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light")
+                CharacterState(name="John", state_before="calm")
             ],
-            event="John enters the dark room"
+            situation="John is in a dark room"
         )
         curr_node = NarrativeNode(
             id="n-2",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="scared", goal="survive"),
-                CharacterState(name="Maria", state="curious", goal="explore")
+                CharacterState(name="John", state_before="scared"),
+                CharacterState(name="Maria", state_before="curious")
             ],
-            event="Maria enters the room"
+            situation="Maria enters the room"
         )
 
         delta = tracker.track(prev_node, curr_node)
@@ -59,19 +71,23 @@ class TestStateTracker:
         prev_node = NarrativeNode(
             id="n-1",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light"),
-                CharacterState(name="Maria", state="curious", goal="explore")
+                CharacterState(name="John", state_before="calm"),
+                CharacterState(name="Maria", state_before="curious")
             ],
-            event="John and Maria are in the room"
+            situation="John and Maria are together"
         )
         curr_node = NarrativeNode(
             id="n-2",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="scared", goal="survive")
+                CharacterState(name="John", state_before="scared")
             ],
-            event="Maria leaves"
+            situation="Maria leaves"
         )
 
         delta = tracker.track(prev_node, curr_node)
@@ -84,18 +100,22 @@ class TestStateTracker:
         prev_node = NarrativeNode(
             id="n-1",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light")
+                CharacterState(name="John", state_before="calm")
             ],
-            event="John is in the room"
+            situation="John is calm"
         )
         curr_node = NarrativeNode(
             id="n-2",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light")
+                CharacterState(name="John", state_before="calm")
             ],
-            event="John looks around"
+            situation="John looks around"
         )
 
         delta = tracker.track(prev_node, curr_node)
@@ -107,10 +127,12 @@ class TestStateTracker:
         curr_node = NarrativeNode(
             id="n-1",
             scene="A dark room",
+            location="A dark room",
+            scene_timing="night",
             characters=[
-                CharacterState(name="John", state="calm", goal="find the light")
+                CharacterState(name="John", state_before="calm")
             ],
-            event="John enters"
+            situation="John enters"
         )
 
         delta = tracker.track(None, curr_node)

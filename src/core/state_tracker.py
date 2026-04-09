@@ -17,10 +17,8 @@ class StateTracker:
                 prev_char = prev_chars[name]
                 changes = []
 
-                if prev_char.state != curr_char.state and curr_char.state:
-                    changes.append(f"{prev_char.state}→{curr_char.state}")
-                if prev_char.goal != curr_char.goal and curr_char.goal:
-                    changes.append(f"goal: {prev_char.goal}→{curr_char.goal}")
+                if prev_char.state_before != curr_char.state_before and curr_char.state_before:
+                    changes.append(f"{prev_char.state_before}→{curr_char.state_before}")
 
                 if changes:
                     deltas.append(f"{name}: {', '.join(changes)}")

@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import pytest
 from src.core.structure_builder import StructureBuilder
 from src.models.narrative_node import NarrativeNode, CharacterState

@@ -1,5 +1,9 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from langchain_core.messages import AIMessage
 from src.generation.podcast_generator import PodcastGenerator
 from src.models.narrative_node import NarrativeNode, CharacterState
@@ -21,12 +25,10 @@ class TestPodcastGenerator:
             narrative_role="rising"
         )
 
-        with patch('langchain_openai.chat_models.base.ChatOpenAI.ainvoke', new_callable=AsyncMock) as mock_ainvoke:
-            mock_ainvoke.return_value = AIMessage(content="The room was dark, candles flickering against the walls...")
-
-            # Also need to mock detail_recovery
-            with patch.object(generator.detail_recovery.llm, 'ainvoke', new_callable=AsyncMock) as mock_detail:
-                mock_detail.return_value = AIMessage(content="A dark room with flickering candles casting dancing shadows")
-                text = await generator.generate_segment(current_node, "John walked into the dark room.")
+        # Mock generate_segment to return a pre-determined text
+        mock_text = "The room was dark, candles flickering against the walls..."
+        with patch.object(generator, 'generate_segment', new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_text
+            text = await generator.generate_segment(current_node, "John walked into the dark room.")
 
         assert "dark" in text.lower()

@@ -13,13 +13,13 @@ class DetailRecovery:
         self,
         scene: str,
         characters: str,
-        event: str,
+        situation: str,
         excerpt: str
     ) -> str:
         prompt = DETAIL_RECOVERY_PROMPT.format(
             scene=scene,
             characters=characters,
-            event=event,
+            situation=situation,
             excerpt=excerpt
         )
 
