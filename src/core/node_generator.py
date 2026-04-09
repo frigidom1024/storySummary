@@ -56,6 +56,24 @@ class NarrativeBeatModel(BaseModel):
     relationship_delta: list[RelationshipStateChangeModel] = Field(default_factory=list, description="Relationship changes in this beat")
     narrative_role: str = Field(default="", description="opening / rising / climax / ending")
 
+    # === 时间坐标 ===
+    timeline_order: int = Field(default=0, description="Story-chronological order: negative=before主线, positive=after主线")
+    timeline_anchor: str = Field(default="", description="Time anchor: 大学时期/毕业后一年/现在/第一章 etc")
+    is_time_jump: bool = Field(default=False, description="Is this a time jump?")
+    jump_direction: str = Field(default="", description="past/future - direction of jump")
+    jump_label: str = Field(default="", description="插叙/倒叙/前传/前传 or empty")
+
+    # === 叙事线链路 ===
+    thread_id: str = Field(default="main", description="Thread ID: main/zhang/chenwei/laozhou etc")
+    thread_name: str = Field(default="", description="Thread display name")
+    thread_prev_node_id: str = Field(default="", description="Previous node ID in same thread")
+    thread_next_node_id: str = Field(default="", description="Next node ID in same thread (optional)")
+
+    # === 分支/汇聚 ===
+    branch_from_node: str = Field(default="", description="Node ID where this thread diverged")
+    converges_to_node: str = Field(default="", description="Node ID this thread converges to")
+    is_convergence: bool = Field(default=False, description="Is this a multi-thread convergence point?")
+
 
 class NarrativeBeatsOutput(BaseModel):
     """Output schema for multiple narrative beats."""
@@ -129,7 +147,22 @@ class NarrativeNodeGenerator:
                     RelationshipStateChange(pair=r.pair, from_state=r.from_state, to_state=r.to_state)
                     for r in beat_data.relationship_delta if r.pair
                 ],
-                narrative_role=beat_data.narrative_role
+                narrative_role=beat_data.narrative_role,
+                # === 时间坐标 ===
+                timeline_order=beat_data.timeline_order,
+                timeline_anchor=beat_data.timeline_anchor,
+                is_time_jump=beat_data.is_time_jump,
+                jump_direction=beat_data.jump_direction,
+                jump_label=beat_data.jump_label,
+                # === 叙事线链路 ===
+                thread_id=beat_data.thread_id or "main",
+                thread_name=beat_data.thread_name,
+                thread_prev_node_id=beat_data.thread_prev_node_id,
+                thread_next_node_id=beat_data.thread_next_node_id,
+                # === 分支/汇聚 ===
+                branch_from_node=beat_data.branch_from_node,
+                converges_to_node=beat_data.converges_to_node,
+                is_convergence=beat_data.is_convergence,
             )
             nodes.append(node)
 
