@@ -111,40 +111,31 @@ class EpubReader:
                     continue
 
     def _strip_html(self, html: str) -> str:
-        """Remove HTML tags from content."""
+        """Remove HTML tags from content using regex-based approach."""
         # Remove script and style elements first
         html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
         html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
 
-        try:
-            # Wrap in a div to handle fragments
-            root = ET.fromstring(f"<div>{html}</div>")
-            return self._element_text(root)
-        except ET.ParseError:
-            # Fallback: simple regex-based stripping
-            text = re.sub(r"<[^>]+>", " ", html)
-            text = re.sub(r"&nbsp;", " ", text)
-            text = re.sub(r"&amp;", "&", text)
-            text = re.sub(r"&lt;", "<", text)
-            text = re.sub(r"&gt;", ">", text)
-            text = re.sub(r"&quot;", '"', text)
-            text = re.sub(r"\s+", " ", text)
-            return text.strip()
+        # Handle CDATA sections
+        html = re.sub(r'<!\[CDATA\[.*?\]\]>', '', html, flags=re.DOTALL)
 
-    def _element_text(self, elem: ET.Element) -> str:
-        """Extract text from element and children."""
-        parts = []
-        if elem.text:
-            parts.append(elem.text)
-        for child in elem:
-            # Skip script and style
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if tag in ("script", "style"):
-                continue
-            parts.append(self._element_text(child))
-            if child.tail:
-                parts.append(child.tail)
-        return " ".join(parts).strip()
+        # Replace common HTML entities
+        html = html.replace('&nbsp;', ' ')
+        html = html.replace('&amp;', '&')
+        html = html.replace('&lt;', '<')
+        html = html.replace('&gt;', '>')
+        html = html.replace('&quot;', '"')
+        html = html.replace('&#39;', "'")
+        html = html.replace('&apos;', "'")
+
+        # Remove all HTML tags
+        text = re.sub(r'<[^>]+>', '', html)
+
+        # Clean up whitespace
+        text = re.sub(r'\s+', ' ', text)
+
+        return text.strip()
+
 
     def _extract_title(self, html: str) -> Optional[str]:
         """Try to extract title from HTML content."""
