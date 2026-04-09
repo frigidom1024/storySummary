@@ -6,32 +6,59 @@ import pytest
 import tempfile
 import os
 import gc
+import uuid
 from src.storage.database import Database
-from src.storage.vector_store import VectorStore
 from src.models.narrative_node import NarrativeNode, CharacterState
 
 
 class TestDatabase:
-    def test_save_and_retrieve_node(self):
+    def test_save_and_retrieve_node_with_book_id(self):
+        """Nodes from different books with same node_id must not collide."""
         tmpdir = tempfile.mkdtemp()
+        book1 = str(uuid.uuid4())
+        book2 = str(uuid.uuid4())
         try:
             db = Database(os.path.join(tmpdir, "test.db"))
-            node = NarrativeNode(
-                id="n-001",
-                scene="A dark room",
-                characters=[CharacterState(name="John", state="scared", goal="escape")],
-                event="John entered the dark room",
-                tension="Unknown danger",
-                stakes="Life or death",
-                narrative_role="opening"
-            )
-            db.save_node(node)
-            retrieved = db.get_node("n-001")
 
-            assert retrieved is not None
-            assert retrieved.id == "n-001"
-            assert retrieved.scene == "A dark room"
-            assert len(retrieved.characters) == 1
+            # Save node for book1
+            node1 = NarrativeNode(
+                id="n-001",
+                parent_chunk_id="c-001",
+                beat_index=0,
+                scene="咖啡馆",
+                situation="林夏在等陈远",
+                turning_point="收到短信",
+                emotional_arc="林夏从期待到犹豫",
+                mood_tone="紧张",
+                narrative_rhythm="steady",
+                narrative_role="rising",
+            )
+            db.save_node(node1, book1)
+
+            # Save node for book2 with SAME id
+            node2 = NarrativeNode(
+                id="n-001",
+                parent_chunk_id="c-001",
+                beat_index=0,
+                scene="办公室",
+                situation="陈远在工作",
+                turning_point="被叫去开会",
+                emotional_arc="陈远从平静到紧张",
+                mood_tone="压抑",
+                narrative_rhythm="fast",
+                narrative_role="rising",
+            )
+            db.save_node(node2, book2)
+
+            # Retrieve should get correct node per book
+            retrieved1 = db.get_node("n-001", book1)
+            retrieved2 = db.get_node("n-001", book2)
+
+            assert retrieved1 is not None
+            assert retrieved2 is not None
+            assert retrieved1.scene == "咖啡馆"  # book1
+            assert retrieved2.scene == "办公室"   # book2
+            assert retrieved1.id == retrieved2.id  # same id, different book
         finally:
             del db
             gc.collect()
@@ -40,21 +67,20 @@ class TestDatabase:
             except PermissionError:
                 pass
 
-    def test_save_and_retrieve_structure(self):
+    def test_save_and_retrieve_chunks_for_book(self):
         tmpdir = tempfile.mkdtemp()
+        book_id = str(uuid.uuid4())
         try:
-            from src.models.story_structure import StoryStructure
             db = Database(os.path.join(tmpdir, "test.db"))
-            structure = StoryStructure(
-                linear_mainline=["n-001", "n-002"],
-                opening=["n-001"],
-                rising=["n-002"]
-            )
-            db.save_structure("story-1", structure)
-            retrieved = db.get_structure("story-1")
 
-            assert retrieved is not None
-            assert retrieved.linear_mainline == ["n-001", "n-002"]
+            db.save_chunk(book_id, "chunk-001", "第一章内容")
+            db.save_chunk(book_id, "chunk-002", "第二章内容")
+
+            chunks = db.get_chunks_for_book(book_id)
+            assert len(chunks) == 2
+            texts = [c["text"] for c in chunks]
+            assert "第一章内容" in texts
+            assert "第二章内容" in texts
         finally:
             del db
             gc.collect()
@@ -63,121 +89,76 @@ class TestDatabase:
             except PermissionError:
                 pass
 
-
-class TestVectorStore:
-    def test_add_and_search_node(self):
+    def test_cross_book_isolation_chunks(self):
+        """Chunks from different books must not mix."""
         tmpdir = tempfile.mkdtemp()
+        book1 = str(uuid.uuid4())
+        book2 = str(uuid.uuid4())
         try:
-            vs = VectorStore(tmpdir)
-            node = NarrativeNode(
-                id="n-001",
-                scene="旧书店，下午",
-                characters=[CharacterState(name="陈屿", state="无聊", goal="消磨时间")],
-                event="陈屿在旧书店里蹲了两个小时，膝盖发僵",
-                tension="家庭压力与个人现状的冲突",
-                stakes="个人精神状态",
-                narrative_role="opening"
-            )
-            original_text = "八月底的南京，梧桐叶子还绿着，但阳光已经不那么烫人了。陈屿在青岛路上的一家旧书店里蹲了快两个小时，膝盖酸得发僵。"
+            db = Database(os.path.join(tmpdir, "test.db"))
 
-            # Add node
-            vs.add_node(node, original_text)
+            db.save_chunk(book1, "chunk-001", "Book1 第一章")
+            db.save_chunk(book2, "chunk-001", "Book2 第一章")
 
-            # Search
-            results = vs.search("旧书店 陈屿", n_results=1)
+            chunks1 = db.get_chunks_for_book(book1)
+            chunks2 = db.get_chunks_for_book(book2)
 
-            assert results is not None
-            assert len(results['ids'][0]) == 1
-            assert results['ids'][0][0] == "n-001"
+            assert len(chunks1) == 1
+            assert len(chunks2) == 1
+            assert chunks1[0]["text"] == "Book1 第一章"
+            assert chunks2[0]["text"] == "Book2 第一章"
         finally:
-            del vs
+            del db
             gc.collect()
+            try:
+                os.unlink(os.path.join(tmpdir, "test.db"))
+            except PermissionError:
+                pass
 
+    def test_save_and_retrieve_structure_for_book(self):
+        """Structure should be isolated per book."""
+        from src.models.story_structure import StoryStructure
+        tmpdir = tempfile.mkdtemp()
+        book1 = str(uuid.uuid4())
+        book2 = str(uuid.uuid4())
+        try:
+            db = Database(os.path.join(tmpdir, "test.db"))
 
-if __name__ == "__main__":
-    import shutil
-    # Test with wind sample
-    wind_path = Path(__file__).parent.parent.parent / 'node_output.json'
-    if not wind_path.exists():
-        print("node_output.json not found. Run node_generator test first.")
-        exit(1)
+            s1 = StoryStructure(opening=["n1"], rising=["n2"], climax=["n3"], ending=[])
+            s2 = StoryStructure(opening=["n1b"], rising=["n2b"], climax=[], ending=[])
 
-    import json
-    with open(wind_path, 'r', encoding='utf-8') as f:
-        nodes_data = json.load(f)
+            db.save_structure(book1, s1)
+            db.save_structure(book2, s2)
 
-    tmpdir = tempfile.mkdtemp()
-    vs = VectorStore(tmpdir)
+            r1 = db.get_structure_for_book(book1)
+            r2 = db.get_structure_for_book(book2)
 
-    # Load original text
-    original_path = Path(__file__).parent.parent.parent / 'samples' / 'wind'
-    with open(original_path, 'r', encoding='utf-8') as f:
-        full_text = f.read()
+            assert r1 is not None
+            assert r2 is not None
+            assert r1.opening == ["n1"]
+            assert r2.opening == ["n1b"]
+        finally:
+            del db
+            gc.collect()
+            try:
+                os.unlink(os.path.join(tmpdir, "test.db"))
+            except PermissionError:
+                pass
 
-    # Add nodes
-    print("Adding nodes to vector store...")
-    for d in nodes_data:
-        chars = [CharacterState(name=c['name'], state=c.get('state', ''), goal=c.get('goal', '')) for c in d.get('characters', [])]
-        node = NarrativeNode(
-            id=d['id'],
-            parent_chunk_id=d.get('parent_chunk_id', ''),
-            beat_index=d.get('beat_index', 0),
-            scene=d['scene'],
-            characters=chars,
-            event=d['event'],
-            dialogue_summary=d.get('dialogue_summary', ''),
-            tension=d.get('tension', ''),
-            stakes=d.get('stakes', ''),
-            foreshadow=d.get('foreshadow', ''),
-            narrative_role=d.get('narrative_role', '')
-        )
-        vs.add_node(node, full_text)
+    def test_save_book_metadata(self):
+        tmpdir = tempfile.mkdtemp()
+        book_id = str(uuid.uuid4())
+        try:
+            db = Database(os.path.join(tmpdir, "test.db"))
+            db.save_book_metadata(book_id, "user-123", "测试书名")
 
-    print(f"Added {len(nodes_data)} nodes")
-
-    # Test search
-    queries = [
-        "旧书店 陈屿",
-        "沈昭 短信",
-        "方远 林知夏"
-    ]
-
-    print("\n" + "=" * 60)
-    print("VECTOR SEARCH TEST")
-    print("=" * 60)
-
-    for query in queries:
-        print(f"\nQuery: {query}")
-        results = vs.search(query, n_results=2)
-        for i, (doc_id, doc, meta) in enumerate(zip(
-            results['ids'][0],
-            results['documents'][0],
-            results['metadatas'][0]
-        )):
-            print(f"  [{i+1}] {doc_id}")
-            print(f"      Scene: {meta['scene']}")
-            print(f"      Event: {meta['event'][:60]}...")
-
-    # Save results
-    output_path = Path(__file__).parent.parent.parent / 'vector_search_output.txt'
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write("Vector Search Test Results\n")
-        f.write("=" * 60 + "\n\n")
-        for query in queries:
-            f.write(f"Query: {query}\n")
-            results = vs.search(query, n_results=2)
-            for i, (doc_id, doc, meta) in enumerate(zip(
-                results['ids'][0],
-                results['documents'][0],
-                results['metadatas'][0]
-            )):
-                f.write(f"  [{i+1}] {doc_id}\n")
-                f.write(f"      Scene: {meta['scene']}\n")
-                f.write(f"      Event: {meta['event']}\n\n")
-    print(f"\nSaved to {output_path}")
-
-    # Cleanup
-    del vs
-    gc.collect()
-    shutil.rmtree(tmpdir, ignore_errors=True)
-
+            books = db.get_books_for_user("user-123")
+            assert len(books) == 1
+            assert books[0]["title"] == "测试书名"
+        finally:
+            del db
+            gc.collect()
+            try:
+                os.unlink(os.path.join(tmpdir, "test.db"))
+            except PermissionError:
+                pass
