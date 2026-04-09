@@ -194,6 +194,7 @@ class PodcastWritingAgent:
         manuscript = PodcastManuscript(
             title=self.state.book_title,
             chapters=chapters,
+            full_manuscript=polished,
         )
 
         self._save_output(polished)
