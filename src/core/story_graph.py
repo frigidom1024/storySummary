@@ -44,62 +44,81 @@ class StoryGraph:
         if not thread_nodes:
             return []
 
-        # Find the head (node with empty thread_prev_node_id)
-        head = None
+        # Find the tail: node that no other node's thread_prev_node_id points to
+        pointed_to = set()
         for n in thread_nodes:
-            if not n.thread_prev_node_id:
-                head = n
+            if n.thread_prev_node_id:
+                pointed_to.add(n.thread_prev_node_id)
+
+        tail = None
+        for n in thread_nodes:
+            if n.id not in pointed_to:
+                tail = n
                 break
 
-        if not head:
+        if not tail:
             # No links found, return in chunk order
             return sorted(thread_nodes, key=lambda n: n.beat_index)
 
-        # Traverse via thread_prev_node_id links
+        # Traverse backward via thread_prev_node_id (tail -> ... -> head)
         result = []
-        current = head
-        while current:
+        current = tail
+        visited = set()
+        while current and current.id not in visited:
             result.append(current)
-            # Find next via thread_next_node_id first (forward link)
-            if current.thread_next_node_id:
-                current = self._node_map.get(current.thread_next_node_id)
+            visited.add(current.id)
+            # Follow thread_prev_node_id links backward to find predecessor
+            if current.thread_prev_node_id:
+                current = self._node_map.get(current.thread_prev_node_id)
             else:
-                # Fall back: find node whose thread_prev_node_id == current.id
+                # Fall back: find node whose thread_next_node_id == current.id
                 current = None
                 for n in thread_nodes:
-                    if n.thread_prev_node_id == result[-1].id and n not in result:
+                    if n.thread_next_node_id == result[-1].id and n not in result:
                         current = n
                         break
 
-        return result
+        # Reverse to get forward thread order (head -> ... -> tail)
+        return list(reversed(result))
 
     def get_text_order(self) -> list[NarrativeNode]:
         """
         Get all nodes in original text/chunk order (via prev_node_id chain).
+
+        Traversal: find tail (node no other node points to via prev_node_id),
+        then follow prev_node_id links backward to head, collect in that order,
+        then reverse to get forward text order.
         """
         if not self.nodes:
             return []
 
-        # Find head (node with empty prev_node_id)
-        head = None
+        # Find all nodes that are pointed to by some prev_node_id (i.e., not tails)
+        pointed_to = set()
         for n in self.nodes:
-            if not n.prev_node_id:
-                head = n
+            if n.prev_node_id:
+                pointed_to.add(n.prev_node_id)
+
+        # Tail = node that no other node points to via prev_node_id
+        tail = None
+        for n in self.nodes:
+            if n.id not in pointed_to:
+                tail = n
                 break
 
-        if not head:
+        if not tail:
             return list(self.nodes)
 
-        # Traverse via prev_node_id links
+        # Traverse backward via prev_node_id (tail -> ... -> head)
         result = []
-        current = head
+        current = tail
         visited = set()
         while current and current.id not in visited:
             result.append(current)
             visited.add(current.id)
             current = self._node_map.get(current.prev_node_id) if current.prev_node_id else None
 
-        return result
+        # Reverse to get forward text order (head -> ... -> tail)
+        return list(reversed(result))
 
     def get_timeline_order(self) -> list[NarrativeNode]:
         """

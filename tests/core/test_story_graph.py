@@ -120,3 +120,27 @@ def test_single_thread_default():
     sg = StoryGraph(nodes)
     assert sg.get_threads() == ["main"]
     assert len(sg.get_thread("main")) == 2
+
+
+def test_get_text_order():
+    """Test get_text_order returns nodes in forward text order via prev_node_id chain."""
+    # Chain: n-0 -> n-1 -> n-2 (n-2.prev=n-1, n-1.prev=n-0, n-0.prev=None)
+    nodes = [
+        NarrativeNode(id="n-0", thread_id="main", timeline_order=0,
+                       prev_node_id="", beat_index=0,
+                       thread_prev_node_id="", narrative_role="opening",
+                       situation="s0"),
+        NarrativeNode(id="n-1", thread_id="main", timeline_order=1,
+                       prev_node_id="n-0", beat_index=1,
+                       thread_prev_node_id="n-0", narrative_role="rising",
+                       situation="s1"),
+        NarrativeNode(id="n-2", thread_id="main", timeline_order=2,
+                       prev_node_id="n-1", beat_index=2,
+                       thread_prev_node_id="n-1", narrative_role="climax",
+                       situation="s2"),
+    ]
+    sg = StoryGraph(nodes)
+    ordered = sg.get_text_order()
+    ids = [n.id for n in ordered]
+    # Should be forward text order: n-0, n-1, n-2
+    assert ids == ["n-0", "n-1", "n-2"]
