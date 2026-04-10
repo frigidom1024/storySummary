@@ -104,14 +104,49 @@ class NarrativeNodeGenerator:
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
         messages = [
-            SystemMessage(content="You are a narrative analyst. IMPORTANT: Output ONLY the JSON array, no explanations, no reasoning, no text before or after. Start with [ and end with ]."),
+            SystemMessage(content="You are a narrative analyst. Use tools to gather context if needed, then output ONLY the JSON array of beats. No explanations, no text before or after the JSON. Start with [ and end with ]."),
             HumanMessage(content=full_prompt)
         ]
 
         logger.debug(f"Calling LLM for chunk {chunk.id} (model: {self.model_name})")
 
-        # Direct call without tool binding (tool calling disabled for now)
-        response = await self.llm.ainvoke(messages)
+        # Bind tools - model may call them before outputting JSON
+        llm_with_tools = self.llm.bind_tools(
+            [get_previous_chunk_nodes, get_thread_last_node, search_nodes],
+            parallel_tool_calls=False
+        )
+
+        response = await llm_with_tools.ainvoke(messages)
+
+        # Tool call loop - execute tools and continue
+        max_calls = 3
+        call_count = 0
+        while hasattr(response, 'tool_calls') and response.tool_calls and call_count < max_calls:
+            call_count += 1
+            logger.debug(f"Tool call {call_count}: {[tc.name for tc in response.tool_calls]}")
+            for tc in response.tool_calls:
+                impl = TOOL_REGISTRY.get(tc.name)
+                if impl:
+                    try:
+                        # Convert tool args properly
+                        args = {}
+                        for key, value in (tc.args.items() if isinstance(tc.args, dict) else {}):
+                            args[key] = value
+                        result = impl(book_id=self.book_id, **args)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                        logger.warning(f"Tool {tc.name} failed: {e}")
+                else:
+                    result = {"error": f"unknown tool: {tc.name}"}
+                messages.append(ToolMessage(
+                    name=tc.name,
+                    content=json.dumps(result, ensure_ascii=False),
+                    tool_call_id=getattr(tc, 'id', None)
+                ))
+            response = await llm_with_tools.ainvoke(messages)
+
+        if hasattr(response, 'tool_calls') and response.tool_calls and call_count >= max_calls:
+            logger.warning(f"Max tool calls ({max_calls}) reached, proceeding with response")
 
         try:
             parsed = self.output_parser.parse(response.content)
