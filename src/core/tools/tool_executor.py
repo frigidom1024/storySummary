@@ -1,15 +1,19 @@
 """Tool implementations — SQLite queries via existing storage layer."""
 
+import tempfile
+import os
 from src.storage.database import Database
 
 
-def get_previous_chunk_nodes_impl(book_id: str, **kwargs) -> list[dict]:
+def get_previous_chunk_nodes_impl(book_id: str, db_path: str | None = None, **kwargs) -> list[dict]:
     """Get all nodes from the previous chunk (T1 implementation).
 
     Queries the database for the highest-order chunk less than the current one,
     then returns all nodes in that chunk.
     """
-    db = Database()
+    if db_path is None:
+        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
+    db = Database(db_path)
     chunks = db.get_chunks_for_book(book_id)
     if not chunks:
         return []
@@ -34,12 +38,14 @@ def get_previous_chunk_nodes_impl(book_id: str, **kwargs) -> list[dict]:
     return prev_nodes
 
 
-def get_thread_last_node_impl(book_id: str, thread_id: str, **kwargs) -> dict | None:
+def get_thread_last_node_impl(book_id: str, thread_id: str, db_path: str | None = None, **kwargs) -> dict | None:
     """Get the last node in a thread chain (T2 implementation).
 
     Finds the node in the given thread that has no incoming thread_next_node_id.
     """
-    db = Database()
+    if db_path is None:
+        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
+    db = Database(db_path)
     nodes = db.get_nodes_for_book(book_id)
 
     thread_nodes = [n for n in nodes if n.thread_id == thread_id]
@@ -64,9 +70,11 @@ def get_thread_last_node_impl(book_id: str, thread_id: str, **kwargs) -> dict | 
     }
 
 
-def search_nodes_impl(book_id: str, keyword: str, **kwargs) -> list[dict]:
+def search_nodes_impl(book_id: str, keyword: str, db_path: str | None = None, **kwargs) -> list[dict]:
     """Search nodes by character name (T3 implementation)."""
-    db = Database()
+    if db_path is None:
+        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
+    db = Database(db_path)
     nodes = db.get_nodes_for_book(book_id)
 
     results = []
