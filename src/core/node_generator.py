@@ -17,9 +17,9 @@ logger = logging.getLogger("story-summary")
 
 
 def create_llm(api_key: str = None, model: str = None, **kwargs) -> ChatOpenAI:
-    """Create LLM client with DeepSeek or OpenAI compatibility."""
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("DEEPSEEK_API_BASE") or os.getenv("OPENAI_API_BASE")
+    """Create LLM client with DeepSeek, OpenAI, or DashScope compatibility."""
+    api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+    api_base = os.getenv("DEEPSEEK_API_BASE") or os.getenv("OPENAI_API_BASE") or os.getenv("DASHSCOPE_API_BASE")
 
     model = model or os.getenv("LLM_MODEL", "deepseek-chat")
 
@@ -104,54 +104,57 @@ class NarrativeNodeGenerator:
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
         messages = [
-            SystemMessage(content="You are a narrative analyst that outputs valid JSON."),
+            SystemMessage(content="You are a narrative analyst. IMPORTANT: Output ONLY the JSON array, no explanations, no reasoning, no text before or after. Start with [ and end with ]."),
             HumanMessage(content=full_prompt)
         ]
 
         logger.debug(f"Calling LLM for chunk {chunk.id} (model: {self.model_name})")
 
-        # Bind tools to LLM
-        llm_with_tools = self.llm.bind_tools(
-            [get_previous_chunk_nodes, get_thread_last_node, search_nodes]
-        )
-
-        response = await llm_with_tools.ainvoke(messages)
-
-        # Tool call loop
-        max_calls = 5
-        call_count = 0
-        while response.tool_calls and call_count < max_calls:
-            call_count += 1
-            for tc in response.tool_calls:
-                impl = TOOL_REGISTRY.get(tc.name)
-                if impl:
-                    try:
-                        result = impl(book_id=self.book_id, **tc.args)
-                    except Exception as e:
-                        result = {"error": str(e)}
-                else:
-                    result = {"error": f"unknown tool: {tc.name}"}
-                messages.append(ToolMessage(
-                    name=tc.name,
-                    content=json.dumps(result, ensure_ascii=False)
-                ))
-            try:
-                response = await llm_with_tools.ainvoke(messages)
-            except Exception as e:
-                logger.warning(f"LLM invocation failed in tool loop: {e}")
-                break
-
-        if response.tool_calls and call_count >= max_calls:
-            logger.warning(f"Max calls ({max_calls}) reached with pending tool calls: {[tc.name for tc in response.tool_calls]}")
+        # Direct call without tool binding (tool calling disabled for now)
+        response = await self.llm.ainvoke(messages)
 
         try:
             parsed = self.output_parser.parse(response.content)
         except Exception as e:
             logger.warning(f"Failed to parse LLM response as JSON: {e}")
+            raw = response.content[:1000] if hasattr(response, 'content') else str(response)[:1000]
+            logger.debug(f"Raw response content: {raw}")
             return []
 
         # parsed can be a list directly or dict with 'beats' key
+        # Handle qwen-plus reasoning field case
         beats_list = parsed if isinstance(parsed, list) else parsed.get('beats', [])
+
+        # If beats_list is empty but we have a 'reasoning' field, try to extract JSON from it
+        if not beats_list and isinstance(parsed, dict) and 'reasoning' in parsed:
+            reasoning_text = parsed['reasoning']
+            logger.debug(f"Found reasoning field, attempting to extract JSON from it (first 300 chars): {reasoning_text[:300]}")
+            # Try to find JSON array containing beats - look for pattern starting with [{"id":
+            import re
+            json_match = re.search(r'\[\s*\{\s*"id"\s*:', reasoning_text)
+            if json_match:
+                # Found start of JSON array, now find the matching closing bracket
+                start_idx = json_match.start()
+                # Count brackets to find the matching end
+                depth = 0
+                end_idx = start_idx
+                for i, c in enumerate(reasoning_text[start_idx:]):
+                    if c == '[':
+                        depth += 1
+                    elif c == ']':
+                        depth -= 1
+                    if depth == 0:
+                        end_idx = start_idx + i + 1
+                        break
+                json_str = reasoning_text[start_idx:end_idx]
+                logger.debug(f"Extracted JSON candidate (first 100 chars): {json_str[:100]}")
+                try:
+                    import json
+                    beats_list = json.loads(json_str)
+                    logger.debug(f"Successfully extracted {len(beats_list)} beats from reasoning")
+                except Exception as e:
+                    logger.debug(f"Failed to parse JSON from reasoning: {e}, json_str: {json_str[:100]}")
+        logger.debug(f"Parsed response: {str(parsed)[:300]}, beats_list length: {len(beats_list)}")
 
         nodes = []
         for beat_dict in beats_list:

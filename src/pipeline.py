@@ -72,6 +72,9 @@ class NovelToPodcastPipeline:
             # Generate chunk_id if not set
             chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
 
+            # Pass book_id to node_generator for tool queries
+            self.node_generator.book_id = book_id
+
             nodes = await self.node_generator.generate_from_chunk(chunk)
             if not isinstance(nodes, list):
                 nodes = [nodes]
