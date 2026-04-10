@@ -81,7 +81,8 @@ class NarrativeBeatsOutput(BaseModel):
 
 
 class NarrativeNodeGenerator:
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
+        self.book_id = book_id  # injected externally by pipeline
         self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
         self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7)
 
