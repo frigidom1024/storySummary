@@ -100,6 +100,15 @@ App.vue
 **交互：**
 - 点击跳转至 `/books/{id}`
 
+### 4.3.1 BookList - 书籍列表容器
+
+**功能：**
+- 接收书籍数组，渲染 BookCard 网格
+- 处理空状态（无书籍时显示提示）
+
+**布局：**
+- CSS Grid，响应式列数 (1-3列)
+
 ### 4.4 BookDetailView - 书籍详情页
 
 **功能：**
@@ -114,12 +123,13 @@ App.vue
 ### 4.5 FilterBar - 筛选栏
 
 **功能：**
-- 搜索节点（根据 situation、scene 等字段）
+- 搜索节点（根据 scene、situation 等字段）
 - 筛选节点类型（opening/rising/climax/ending）
-- 筛选时间锚点（timeline_anchor）
 
 **交互：**
 - 输入搜索 → 实时过滤时间线节点
+
+> 注：`timeline_anchor` 筛选暂不实现，后续按需添加。
 
 ### 4.6 TimelineView - 时间线视图
 
@@ -131,18 +141,25 @@ App.vue
 **节点卡片内容：**
 ```
 ┌─────────────────────────────┐
-│ [opening/rising/climax]     │  ← narrative_role 标签
-│ 第三章：重逢                  │  ← 节点ID或场景名
+│ [opening/rising/climax]     │  ← narrative_role 标签，颜色区分
+│ 第三章：重逢                  │  ← scene 场景描述
 │ ---------------------------- │
-│ 📍 青岛路旧书店               │  ← location
-│ ⏰ 午后                      │  ← scene_timing
-│ 👤 陈屿、沈昭                │  ← characters
-│ 💭 情绪：从疏离到试探          │  ← emotional_arc
+│ location: 青岛路旧书店        |  ← location
+│ timing: 午后                 |  ← scene_timing
+│ 角色: 陈屿、沈昭              |  ← characters 名字拼接
+│ 情绪: 从疏离到试探            |  ← emotional_arc
 └─────────────────────────────┘
 ```
 
+> 注意：characters 是对象数组 `Array<{name: string, state_before: string}>`，展示时提取 name 用顿号拼接。
+
 **时间跳跃标记：**
-- `is_time_jump = true` 时，显示跳跃方向标签（如 "插叙"、"倒叙"）
+- `is_time_jump = true` 时，根据 `jump_direction` 显示：
+  - `"past"` → 显示 "插叙/倒叙"
+  - `"future"` → 显示 "预叙"
+- 卡片左侧显示时间锚点标签（`timeline_anchor`，如 "大学时期"、"毕业后一年"）
+
+> **多线程/分支说明：** 后续版本考虑支持 `thread_id` 多叙事线。当前 P0 版本仅展示 `thread_id = "main"` 的主叙事线节点，忽略分支。
 
 ### 4.7 NodeDetail - 节点详情弹窗
 
@@ -165,17 +182,25 @@ App.vue
 
 ### 5.1 NarrativeNode 展示字段
 
-| 字段 | 说明 | 展示位置 |
-|------|------|---------|
-| id | 节点ID | 卡片头部 |
-| narrative_role | opening/rising/climax/ending | 标签 |
-| scene | 完整场景描述 | 卡片标题 |
-| location | 简化地点 | 卡片内容 |
-| scene_timing | 时间段 | 卡片内容 |
-| characters | 角色列表 | 卡片内容 |
-| emotional_arc | 情绪弧 | 卡片内容 |
-| is_time_jump | 是否时间跳跃 | 标记 |
-| jump_label | 跳跃类型 | 标记 |
+| 字段 | 类型 | 说明 | 展示位置 |
+|------|------|------|---------|
+| id | string | 节点ID | 卡片头部 |
+| narrative_role | string | opening/rising/climax/ending | 标签（颜色区分） |
+| scene | string | 完整场景描述 | 卡片标题 |
+| location | string | 简化地点 | 卡片内容 |
+| scene_timing | string | 时间段 | 卡片内容 |
+| characters | Array<{name, state_before}> | 角色列表 | 卡片内容（提取name拼接） |
+| emotional_arc | string | 情绪弧 | 卡片内容 |
+| timeline_order | number | 故事时间顺序 | 时间线排序 |
+| timeline_anchor | string | 时间锚点（如"大学时期"） | 卡片标签 |
+| is_time_jump | boolean | 是否时间跳跃 | 标记 |
+| jump_direction | string | past/future | 跳跃类型显示 |
+| situation | string | 核心情境（≤25字） | 详情弹窗 |
+| turning_point | string | 转折点 | 详情弹窗 |
+| mood_tone | string | 氛围关键词 | 详情弹窗 |
+| narrative_rhythm | string | slow/steady/fast/pause | 详情弹窗 |
+| discussion_prompts | string[] | 讨论锚点 | 详情弹窗 |
+| relationship_delta | Array<{pair, from_state, to_state}> | 关系变化 | 详情弹窗 |
 
 ### 5.2 筛选数据结构
 
@@ -183,7 +208,6 @@ App.vue
 interface NodeFilter {
   search: string;        // 搜索关键词
   narrativeRole?: string; // opening/rising/climax/ending
-  timelineAnchor?: string;// 时间锚点
 }
 ```
 
