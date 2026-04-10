@@ -185,7 +185,12 @@ class NarrativeNodeGenerator:
 
         # parsed can be a list directly or dict with 'beats' key
         # Handle qwen-plus reasoning field case
-        beats_list = parsed if isinstance(parsed, list) else parsed.get('beats', [])
+        if parsed is None:
+            beats_list = []
+        elif isinstance(parsed, list):
+            beats_list = parsed
+        else:
+            beats_list = parsed.get('beats', [])
 
         # If beats_list is empty but we have a 'reasoning' field, try to extract JSON from it
         if not beats_list and isinstance(parsed, dict) and 'reasoning' in parsed:

@@ -39,6 +39,12 @@ class ChapterChunker:
         r'第[0-9零一二三四五六七八九十百千万\d]+[章节]'
     )
 
+    # Standalone Chinese numeral chapter: "一、", "二、", "三、" (at start of line)
+    CHINESE_NUM_CHAPTER_PATTERN = re.compile(r'^([零一二三四五六七八九十百千万]+)、\s*(.*)$', re.MULTILINE)
+
+    # Standalone Chinese numeral with parentheses: "(一)", "(二)", etc.
+    PAREN_CHINESE_NUM_PATTERN = re.compile(r'^\（([零一二三四五六七八九十百千万]+)）\s*(.*)$', re.MULTILINE)
+
     # Roman numeral chapter markers (must be preceded by non-Roman)
     ROMAN_PATTERN = re.compile(
         r'(?<=[^ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ])'
@@ -166,6 +172,34 @@ class ChapterChunker:
                 after = para[chapter_match.end():].strip()
                 finalize_chunk()
                 current_chapter = chapter_match.group(0)
+                if has_real_content(after):
+                    current_content.append(after)
+                    chars_since_last_marker = len(after)
+                else:
+                    chars_since_last_marker = 0
+                i += 1
+                continue
+
+            # Handle Chinese numeral chapter: "一、旧书店" or "二、约定"
+            chinese_num_match = self.CHINESE_NUM_CHAPTER_PATTERN.match(para)
+            if chinese_num_match:
+                finalize_chunk()
+                current_chapter = f"第{chinese_num_match.group(1)}章"
+                after = chinese_num_match.group(2).strip()
+                if has_real_content(after):
+                    current_content.append(after)
+                    chars_since_last_marker = len(after)
+                else:
+                    chars_since_last_marker = 0
+                i += 1
+                continue
+
+            # Handle parenthesized Chinese numeral: "(一)", "(二)"
+            paren_match = self.PAREN_CHINESE_NUM_PATTERN.match(para)
+            if paren_match:
+                finalize_chunk()
+                current_chapter = f"第{paren_match.group(1)}章"
+                after = paren_match.group(2).strip()
                 if has_real_content(after):
                     current_content.append(after)
                     chars_since_last_marker = len(after)
