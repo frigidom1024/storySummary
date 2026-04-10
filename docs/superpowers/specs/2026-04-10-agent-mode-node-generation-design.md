@@ -1,7 +1,7 @@
 # Narrative Node Generation — Agent Mode Design
 
 Date: 2026-04-10
-Status: Approved
+Status: Draft
 
 ## Background
 
@@ -93,6 +93,8 @@ def get_thread_last_node(book_id: str, thread_id: str) -> dict | None:
     """
 ```
 
+Returns: `{id, timeline_anchor, beat_index}`
+
 ### T3: search_nodes
 
 ```python
@@ -114,6 +116,8 @@ def search_nodes(book_id: str, keyword: str) -> list[dict]:
         list of dicts with keys: id, thread_id, scene (truncated to 50 chars), characters
     """
 ```
+
+Returns: `[{id, thread_id, scene (≤50 chars), characters}, ...]`
 
 ## Timeline Field Adjustment
 
