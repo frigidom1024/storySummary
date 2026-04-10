@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import logging
 from typing import Optional
 from langchain_openai import ChatOpenAI
@@ -11,7 +13,6 @@ from src.core.prompts import MULTI_BEAT_NODE_PROMPT
 from src.core.tools.node_query_tools import get_previous_chunk_nodes, get_thread_last_node, search_nodes
 from src.core.tools.tool_executor import TOOL_REGISTRY
 from langchain_core.messages import ToolMessage
-import json
 
 logger = logging.getLogger("story-summary")
 
@@ -123,25 +124,30 @@ class NarrativeNodeGenerator:
         call_count = 0
         while hasattr(response, 'tool_calls') and response.tool_calls and call_count < max_calls:
             call_count += 1
-            logger.debug(f"Tool call {call_count}: {[tc.name for tc in response.tool_calls]}")
-            for tc in response.tool_calls:
-                impl = TOOL_REGISTRY.get(tc.name)
+            # Handle both list of ToolCall objects and list of dicts
+            tool_calls = response.tool_calls
+            for tc in tool_calls:
+                tc_name = tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', None)
+                tc_id = tc.get('id') if isinstance(tc, dict) else getattr(tc, 'id', None)
+                tc_args = tc.get('args') if isinstance(tc, dict) else getattr(tc, 'args', {})
+
+                logger.debug(f"Tool call {call_count}: {tc_name} with args: {tc_args}")
+                impl = TOOL_REGISTRY.get(tc_name)
                 if impl:
                     try:
-                        # Convert tool args properly
-                        args = {}
-                        for key, value in (tc.args.items() if isinstance(tc.args, dict) else {}):
-                            args[key] = value
-                        result = impl(book_id=self.book_id, **args)
+                        # Always use self.book_id, but pass through other args
+                        merged_args = dict(tc_args)
+                        merged_args['book_id'] = self.book_id
+                        result = impl(**merged_args)
                     except Exception as e:
                         result = {"error": str(e)}
-                        logger.warning(f"Tool {tc.name} failed: {e}")
+                        logger.warning(f"Tool {tc_name} failed: {e}")
                 else:
-                    result = {"error": f"unknown tool: {tc.name}"}
+                    result = {"error": f"unknown tool: {tc_name}"}
                 messages.append(ToolMessage(
-                    name=tc.name,
+                    name=tc_name,
                     content=json.dumps(result, ensure_ascii=False),
-                    tool_call_id=getattr(tc, 'id', None)
+                    tool_call_id=tc_id
                 ))
             response = await llm_with_tools.ainvoke(messages)
 
@@ -151,10 +157,31 @@ class NarrativeNodeGenerator:
         try:
             parsed = self.output_parser.parse(response.content)
         except Exception as e:
-            logger.warning(f"Failed to parse LLM response as JSON: {e}")
-            raw = response.content[:1000] if hasattr(response, 'content') else str(response)[:1000]
-            logger.debug(f"Raw response content: {raw}")
-            return []
+            # Try to extract JSON from response that has thinking text before JSON
+            logger.debug(f"Initial parse failed: {e}, trying to extract JSON from response")
+            content = response.content if hasattr(response, 'content') else str(response)
+            json_match = re.search(r'\[\s*\{[^}\]]*"id"\s*:[^}\]]*\}', content)
+            if json_match:
+                # Found potential JSON, try to extract full array
+                start = json_match.start()
+                depth = 0
+                for i, c in enumerate(content[start:]):
+                    if c == '[':
+                        depth += 1
+                    elif c == ']':
+                        depth -= 1
+                    if depth == 0:
+                        try:
+                            parsed = json.loads(content[start:start+i+1])
+                            logger.debug(f"Successfully extracted JSON array with {len(parsed)} items")
+                            break
+                        except:
+                            pass
+                else:
+                    parsed = None
+            if parsed is None:
+                logger.warning(f"Failed to parse LLM response as JSON: {e}")
+                return []
 
         # parsed can be a list directly or dict with 'beats' key
         # Handle qwen-plus reasoning field case
@@ -165,7 +192,6 @@ class NarrativeNodeGenerator:
             reasoning_text = parsed['reasoning']
             logger.debug(f"Found reasoning field, attempting to extract JSON from it (first 300 chars): {reasoning_text[:300]}")
             # Try to find JSON array containing beats - look for pattern starting with [{"id":
-            import re
             json_match = re.search(r'\[\s*\{\s*"id"\s*:', reasoning_text)
             if json_match:
                 # Found start of JSON array, now find the matching closing bracket
@@ -184,7 +210,6 @@ class NarrativeNodeGenerator:
                 json_str = reasoning_text[start_idx:end_idx]
                 logger.debug(f"Extracted JSON candidate (first 100 chars): {json_str[:100]}")
                 try:
-                    import json
                     beats_list = json.loads(json_str)
                     logger.debug(f"Successfully extracted {len(beats_list)} beats from reasoning")
                 except Exception as e:
