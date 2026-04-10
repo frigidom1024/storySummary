@@ -135,9 +135,20 @@ class NarrativeNodeGenerator:
                     name=tc.name,
                     content=json.dumps(result, ensure_ascii=False)
                 ))
-            response = await llm_with_tools.ainvoke(messages)
+            try:
+                response = await llm_with_tools.ainvoke(messages)
+            except Exception as e:
+                logger.warning(f"LLM invocation failed in tool loop: {e}")
+                break
 
-        parsed = self.output_parser.parse(response.content)
+        if response.tool_calls and call_count >= max_calls:
+            logger.warning(f"Max calls ({max_calls}) reached with pending tool calls: {[tc.name for tc in response.tool_calls]}")
+
+        try:
+            parsed = self.output_parser.parse(response.content)
+        except Exception as e:
+            logger.warning(f"Failed to parse LLM response as JSON: {e}")
+            return []
 
         # parsed can be a list directly or dict with 'beats' key
         beats_list = parsed if isinstance(parsed, list) else parsed.get('beats', [])
