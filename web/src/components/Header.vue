@@ -1,8 +1,16 @@
 <template>
   <header class="header">
-    <h1>Story Summary</h1>
+    <div class="header-content">
+      <h1 class="logo" @click="router.push('/')">Story Summary</h1>
+    </div>
   </header>
 </template>
+
+<script setup lang="ts">
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+</script>
 
 <style scoped>
 .header {
@@ -11,10 +19,19 @@
   padding: 16px 24px;
 }
 
-.header h1 {
+.header-content {
   max-width: 1200px;
   margin: 0 auto;
-  font-size: 1.5rem;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 600;
   color: var(--color-text);
+  cursor: pointer;
+}
+
+.logo:hover {
+  color: var(--color-primary);
 }
 </style>
