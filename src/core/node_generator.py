@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
 from src.core.prompts import MULTI_BEAT_NODE_PROMPT
+from src.core.tools.node_query_tools import get_previous_chunk_nodes, get_thread_last_node, search_nodes
+from src.core.tools.tool_executor import TOOL_REGISTRY
+from langchain_core.messages import ToolMessage
+import json
 
 logger = logging.getLogger("story-summary")
 
@@ -91,13 +95,11 @@ class NarrativeNodeGenerator:
         self.output_parser = JsonOutputParser(pydantic_schema=NarrativeBeatsOutput)
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
-        """Generate MULTIPLE narrative beats from ONE chunk using structured output."""
+        """Generate MULTIPLE narrative beats from ONE chunk using structured output + tool calling."""
         prompt = MULTI_BEAT_NODE_PROMPT.format(
             text=chunk.text,
             chunk_order=chunk.order
         )
-
-        # Include format instructions in the prompt
         format_instructions = self.output_parser.get_format_instructions()
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
@@ -108,7 +110,33 @@ class NarrativeNodeGenerator:
 
         logger.debug(f"Calling LLM for chunk {chunk.id} (model: {self.model_name})")
 
-        response = await self.llm.ainvoke(messages)
+        # Bind tools to LLM
+        llm_with_tools = self.llm.bind_tools(
+            [get_previous_chunk_nodes, get_thread_last_node, search_nodes]
+        )
+
+        response = await llm_with_tools.ainvoke(messages)
+
+        # Tool call loop
+        max_calls = 5
+        call_count = 0
+        while response.tool_calls and call_count < max_calls:
+            call_count += 1
+            for tc in response.tool_calls:
+                impl = TOOL_REGISTRY.get(tc.name)
+                if impl:
+                    try:
+                        result = impl(book_id=self.book_id, **tc.args)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                else:
+                    result = {"error": f"unknown tool: {tc.name}"}
+                messages.append(ToolMessage(
+                    name=tc.name,
+                    content=json.dumps(result, ensure_ascii=False)
+                ))
+            response = await llm_with_tools.ainvoke(messages)
+
         parsed = self.output_parser.parse(response.content)
 
         # parsed can be a list directly or dict with 'beats' key
@@ -117,14 +145,11 @@ class NarrativeNodeGenerator:
         nodes = []
         for beat_dict in beats_list:
             try:
-                # Validate dict as Pydantic model
                 beat_data = NarrativeBeatModel.model_validate(beat_dict)
             except Exception:
-                # Skip beats with invalid data (e.g., missing required fields from LLM)
                 logger.warning(f"Skipping invalid beat: {beat_dict.get('id', 'unknown')}")
                 continue
 
-            # Filter out characters with missing name
             valid_characters = [
                 CharacterState(name=c.name, state_before=c.state_before)
                 for c in beat_data.characters if c.name
@@ -149,18 +174,15 @@ class NarrativeNodeGenerator:
                     for r in beat_data.relationship_delta if r.pair
                 ],
                 narrative_role=beat_data.narrative_role,
-                # === 时间坐标 ===
                 timeline_order=beat_data.timeline_order,
                 timeline_anchor=beat_data.timeline_anchor,
                 is_time_jump=beat_data.is_time_jump,
                 jump_direction=beat_data.jump_direction,
                 jump_label=beat_data.jump_label,
-                # === 叙事线链路 ===
                 thread_id=beat_data.thread_id or "main",
                 thread_name=beat_data.thread_name,
                 thread_prev_node_id=beat_data.thread_prev_node_id,
                 thread_next_node_id=beat_data.thread_next_node_id,
-                # === 分支/汇聚 ===
                 branch_from_node=beat_data.branch_from_node,
                 converges_to_node=beat_data.converges_to_node,
                 is_convergence=beat_data.is_convergence,
