@@ -83,6 +83,7 @@ CREATE TABLE books (
     title TEXT NOT NULL,
     nodes_file_path TEXT NOT NULL,
     status TEXT DEFAULT 'pending',
+    is_deleted INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -95,6 +96,7 @@ CREATE TABLE books (
 | title | TEXT | 书名 |
 | nodes_file_path | TEXT | nodes.json 文件路径 |
 | status | TEXT | pending/processing/completed/failed |
+| is_deleted | INTEGER | 软删除标记（0=正常，1=已删除） |
 | created_at | TIMESTAMP | 创建时间 |
 
 ---
@@ -142,7 +144,9 @@ class IBookService(ABC):
     def update_book_status(self, book_id: str, status: str) -> Book: ...
 
     @abstractmethod
-    def delete_book(self, book_id: str) -> None: ...
+    def delete_book(self, book_id: str) -> None:
+        """软删除书籍（设置 is_deleted=1，删除 JSON 文件）"""
+        ...
 
 
 class INodeService(ABC):
@@ -164,7 +168,6 @@ class INodeService(ABC):
 ```python
 # src/models/user.py
 from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
 
 class User(BaseModel):
@@ -176,8 +179,7 @@ class User(BaseModel):
     created_at: datetime
 
 # src/models/book.py
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 class Book(BaseModel):
@@ -185,8 +187,69 @@ class Book(BaseModel):
     user_id: str
     title: str
     nodes_file_path: str
-    status: str = "pending"
+    status: str = "pending"  # pending | processing | completed | failed
+    is_deleted: bool = False
     created_at: datetime
+
+# src/models/narrative_node.py
+from pydantic import BaseModel, Field
+from typing import Optional
+
+class CharacterState(BaseModel):
+    name: str
+    state_before: str = ""
+
+class RelationshipStateChange(BaseModel):
+    pair: str = ""
+    from_state: str = ""
+    to_state: str = ""
+
+class NarrativeNode(BaseModel):
+    id: str
+    parent_chunk_id: str = ""
+    beat_index: int = 0
+    scene: str = ""
+    location: str = ""
+    scene_timing: str = ""
+    characters: list[CharacterState] = Field(default_factory=list)
+    situation: str = ""
+    turning_point: str = ""
+    emotional_arc: str = ""
+    mood_tone: str = ""
+    narrative_rhythm: str = ""
+    discussion_prompts: list[str] = Field(default_factory=list)
+    relationship_delta: list[RelationshipStateChange] = Field(default_factory=list)
+    prev_node_id: str = ""
+    narrative_role: str = ""
+    timeline_order: int = 0
+    timeline_anchor: str = ""
+    is_time_jump: bool = False
+    jump_direction: str = ""
+    jump_label: str = ""
+    thread_id: str = "main"
+    thread_name: str = ""
+    thread_prev_node_id: str = ""
+    thread_next_node_id: str = ""
+    branch_from_node: str = ""
+    converges_to_node: str = ""
+    is_convergence: bool = False
+
+class StoryStructure(BaseModel):
+    linear_mainline: list[str] = Field(default_factory=list)
+    opening: list[str] = Field(default_factory=list)
+    rising: list[str] = Field(default_factory=list)
+    climax: list[str] = Field(default_factory=list)
+    ending: list[str] = Field(default_factory=list)
+
+# src/models/chunk.py
+from pydantic import BaseModel
+from typing import Optional
+
+class Chunk(BaseModel):
+    id: str
+    text: str
+    chapter: Optional[str] = None
+    order: int = 0
 ```
 
 ---
@@ -239,6 +302,93 @@ Services (依赖接口，通过参数注入)
 Storage Layer (database.py, json_storage.py)
     ↓
 SQLite / File System
+```
+
+### 5.3 JSON 文件读写策略
+
+```python
+# src/storage/json_storage.py
+
+import json
+import tempfile
+import os
+from pathlib import Path
+from typing import Any
+
+class JsonStorage:
+    """JSON 文件存储，支持原子写入和文件锁"""
+
+    def read(self, file_path: str) -> dict:
+        """读取 JSON 文件"""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"JSON file not found: {file_path}")
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def write(self, file_path: str, data: dict) -> None:
+        """
+        原子写入 JSON 文件：
+        1. 先写入临时文件
+        2. 再 rename 到目标文件（原子操作）
+        """
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 写入临时文件
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.json', dir=path.parent)
+        try:
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # 原子替换
+            os.replace(temp_path, path)
+        except Exception:
+            # 失败时清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
+    def delete(self, file_path: str) -> None:
+        """删除 JSON 文件"""
+        path = Path(file_path)
+        if path.exists():
+            os.remove(path)
+```
+
+### 5.4 路径构建安全
+
+```python
+# src/storage/path_builder.py
+
+import uuid
+from pathlib import Path
+
+class PathBuilder:
+    """安全构建存储路径"""
+
+    def __init__(self, base_dir: str = "data"):
+        self.base_dir = Path(base_dir).resolve()
+
+    def build_user_dir(self, user_id: str) -> Path:
+        """构建用户目录"""
+        # 安全检查：只允许字母、数字、连字符、下划线
+        self._validate_id(user_id)
+        return self.base_dir / user_id
+
+    def build_book_dir(self, user_id: str, book_id: str) -> Path:
+        """构建书籍目录"""
+        self._validate_id(user_id)
+        self._validate_id(book_id)
+        return self.build_user_dir(user_id) / book_id
+
+    def build_nodes_file(self, user_id: str, book_id: str) -> str:
+        """构建 nodes.json 文件路径"""
+        return str(self.build_book_dir(user_id, book_id) / "nodes.json")
+
+    def _validate_id(self, id_str: str) -> None:
+        """验证 ID 格式，防止路径遍历"""
+        if not id_str.replace('-', '').replace('_', '').isalnum():
+            raise ValueError(f"Invalid ID format: {id_str}")
 ```
 
 ---
@@ -294,30 +444,46 @@ ChromaDB 保持独立，继续使用：
 # src/storage/vector_store.py
 class VectorStore:
     def __init__(self, persist_dir: str): ...
+
     def add_node(self, node: NarrativeNode, original_text: str, book_id: str): ...
+
+    def add_nodes_batch(self, nodes: list[NarrativeNode], texts: list[str], book_id: str):
+        """批量添加节点"""
+
+    def delete_book_vectors(self, book_id: str):
+        """删除书籍的所有向量（在删除书籍时调用）"""
+
     def search(self, query: str, book_id: str = None, n_results: int = 3): ...
 ```
+
+**ChromaDB 生命周期：**
+- 创建节点时：调用 `add_nodes_batch` 添加向量
+- 删除书籍时：先调用 `delete_book_vectors` 清理向量，再删除 JSON 文件
 
 ---
 
 ## 8. 迁移计划
 
 ### Phase 1: 模型重构
+
 1. 创建 `User`, `Book` 模型
 2. 更新 `NarrativeNode`, `StoryStructure` 模型
 
 ### Phase 2: 存储层重构
+
 1. 实现 `database.py` - SQLite 表创建
 2. 实现 `json_storage.py` - JSON 文件读写
 3. 实现 `path_builder.py` - 路径构建
 
 ### Phase 3: 服务层重构
+
 1. 实现 `interfaces.py` - 接口定义
 2. 实现 `user_service.py`
 3. 实现 `book_service.py`
 4. 实现 `node_service.py`
 
 ### Phase 4: API 层适配
+
 1. 更新 API routes 使用新服务
 2. 添加认证路由
 3. 移除旧的数据库调用
