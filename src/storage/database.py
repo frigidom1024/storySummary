@@ -1,176 +1,153 @@
 import sqlite3
-import json
-import uuid
-from pathlib import Path
-from src.models.narrative_node import NarrativeNode, CharacterState
-from src.models.story_structure import StoryStructure
+from typing import List, Optional
+from src.models.user import User
+from src.models.book import Book
 
 
 class Database:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._conn = None
         self._init_db()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path, timeout=1) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
 
-            # books: each book's metadata
+            # users 表
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    profile TEXT DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # books 表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS books (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
+                    nodes_file_path TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    is_deleted INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_books_user ON books(user_id)")
 
-            # chunks: text chunks per book
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS chunks (
-                    id TEXT NOT NULL,
-                    book_id TEXT NOT NULL,
-                    chapter_title TEXT,
-                    text TEXT NOT NULL,
-                    "order" INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (book_id, id)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)")
+    # === Users ===
 
-            # nodes: narrative nodes per book
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS nodes (
-                    id TEXT NOT NULL,
-                    book_id TEXT NOT NULL,
-                    chunk_id TEXT NOT NULL,
-                    beat_index INTEGER DEFAULT 0,
-                    data TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (book_id, id)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_book ON nodes(book_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_chunk ON nodes(chunk_id)")
+    def create_user(self, user: User) -> None:
+        """创建用户"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT INTO users (id, username, email, password_hash, profile, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user.id, user.username, user.email, user.password_hash,
+                 str(user.profile), user.created_at)
+            )
 
-            # story_structures: structure per book
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS story_structures (
-                    book_id TEXT PRIMARY KEY,
-                    data TEXT NOT NULL
+    def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """根据 ID 获取用户"""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT id, username, email, password_hash, profile, created_at FROM users WHERE id = ?",
+                (user_id,)
+            ).fetchone()
+            if row:
+                import json
+                return User(
+                    id=row[0], username=row[1], email=row[2],
+                    password_hash=row[3], profile=json.loads(row[4]), created_at=row[5]
                 )
-            """)
+            return None
+
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        """根据用户名获取用户"""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT id, username, email, password_hash, profile, created_at FROM users WHERE username = ?",
+                (username,)
+            ).fetchone()
+            if row:
+                import json
+                return User(
+                    id=row[0], username=row[1], email=row[2],
+                    password_hash=row[3], profile=json.loads(row[4]), created_at=row[5]
+                )
+            return None
+
+    def update_user_profile(self, user_id: str, profile: dict) -> None:
+        """更新用户资料"""
+        import json
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE users SET profile = ? WHERE id = ?",
+                (json.dumps(profile), user_id)
+            )
 
     # === Books ===
 
-    def save_book_metadata(self, book_id: str, user_id: str, title: str):
-        """Save or update book metadata."""
+    def create_book(self, book: Book) -> None:
+        """创建书籍"""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO books (id, user_id, title, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (book_id, user_id, title))
+            conn.execute(
+                """INSERT INTO books (id, user_id, title, nodes_file_path, status, is_deleted, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (book.id, book.user_id, book.title, book.nodes_file_path,
+                 book.status, int(book.is_deleted), book.created_at)
+            )
 
-    def get_books_for_user(self, user_id: str) -> list[dict]:
-        """Get all books for a user."""
+    def get_book(self, book_id: str) -> Optional[Book]:
+        """获取书籍"""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """SELECT id, user_id, title, nodes_file_path, status, is_deleted, created_at
+                   FROM books WHERE id = ? AND is_deleted = 0""",
+                (book_id,)
+            ).fetchone()
+            if row:
+                return Book(
+                    id=row[0], user_id=row[1], title=row[2],
+                    nodes_file_path=row[3], status=row[4],
+                    is_deleted=bool(row[5]), created_at=row[6]
+                )
+            return None
+
+    def get_books_for_user(self, user_id: str) -> List[Book]:
+        """获取用户的所有书籍"""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT id, user_id, title, created_at, updated_at FROM books WHERE user_id = ? ORDER BY created_at DESC",
+                """SELECT id, user_id, title, nodes_file_path, status, is_deleted, created_at
+                   FROM books WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC""",
                 (user_id,)
             ).fetchall()
             return [
-                {"id": r[0], "user_id": r[1], "title": r[2], "created_at": r[3], "updated_at": r[4]}
+                Book(
+                    id=r[0], user_id=r[1], title=r[2],
+                    nodes_file_path=r[3], status=r[4],
+                    is_deleted=bool(r[5]), created_at=r[6]
+                )
                 for r in rows
             ]
 
-    def get_book(self, book_id: str) -> dict | None:
-        """Get a single book by ID."""
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT id, user_id, title, created_at, updated_at FROM books WHERE id = ?",
-                (book_id,)
-            ).fetchone()
-            if row:
-                return {"id": row[0], "user_id": row[1], "title": row[2], "created_at": row[3], "updated_at": row[4]}
-            return None
-
-    # === Nodes ===
-
-    def save_node(self, node: NarrativeNode, book_id: str):
-        """Save a narrative node for a specific book."""
+    def update_book_status(self, book_id: str, status: str) -> None:
+        """更新书籍状态"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO nodes (id, book_id, chunk_id, beat_index, data) VALUES (?, ?, ?, ?, ?)",
-                (node.id, book_id, node.parent_chunk_id, node.beat_index, node.model_dump_json())
+                "UPDATE books SET status = ? WHERE id = ?",
+                (status, book_id)
             )
 
-    def get_node(self, node_id: str, book_id: str) -> NarrativeNode | None:
-        """Get a single node by ID within a specific book."""
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT data FROM nodes WHERE id = ? AND book_id = ?",
-                (node_id, book_id)
-            ).fetchone()
-            if row:
-                return NarrativeNode.model_validate_json(row[0])
-            return None
-
-    def get_nodes_for_book(self, book_id: str) -> list[NarrativeNode]:
-        """Get all narrative nodes for a specific book."""
-        with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT data FROM nodes WHERE book_id = ? ORDER BY chunk_id, beat_index",
-                (book_id,)
-            ).fetchall()
-            return [NarrativeNode.model_validate_json(row[0]) for row in rows]
-
-    # === Chunks ===
-
-    def save_chunk(self, book_id: str, chunk_id: str, text: str, chapter_title: str = None, order: int = 0):
-        """Save a text chunk for a specific book."""
+    def soft_delete_book(self, book_id: str) -> None:
+        """软删除书籍"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO chunks (id, book_id, chapter_title, text, \"order\") VALUES (?, ?, ?, ?, ?)",
-                (chunk_id, book_id, chapter_title, text, order)
-            )
-
-    def get_chunks_for_book(self, book_id: str) -> list[dict]:
-        """Get all chunks for a specific book, ordered by 'order'."""
-        with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, chapter_title, text, \"order\" FROM chunks WHERE book_id = ? ORDER BY \"order\"",
+                "UPDATE books SET is_deleted = 1 WHERE id = ?",
                 (book_id,)
-            ).fetchall()
-            return [
-                {"id": r[0], "chapter_title": r[1], "text": r[2], "order": r[3]}
-                for r in rows
-            ]
-
-    # === Structures ===
-
-    def save_structure(self, book_id: str, structure: StoryStructure):
-        """Save story structure for a specific book."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO story_structures (book_id, data) VALUES (?, ?)",
-                (book_id, structure.model_dump_json())
             )
-
-    def get_structure_for_book(self, book_id: str) -> StoryStructure | None:
-        """Get story structure for a specific book."""
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT data FROM story_structures WHERE book_id = ?",
-                (book_id,)
-            ).fetchone()
-            if row:
-                return StoryStructure.model_validate_json(row[0])
-            return None
-
-    # Backward compatibility alias
-    def get_structure(self, book_id: str) -> StoryStructure | None:
-        return self.get_structure_for_book(book_id)
