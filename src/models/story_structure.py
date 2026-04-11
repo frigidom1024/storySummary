@@ -1,9 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class StoryStructure(BaseModel):
-    linear_mainline: list[str] = Field(default_factory=list)  # node IDs in order
+    linear_mainline: list[str] = Field(default_factory=list)
     opening: list[str] = Field(default_factory=list)
     rising: list[str] = Field(default_factory=list)
     climax: list[str] = Field(default_factory=list)

@@ -1,0 +1,16 @@
+from pydantic import BaseModel
+from datetime import datetime
+
+
+class Book(BaseModel):
+    """Book index model"""
+    id: str
+    user_id: str
+    title: str
+    nodes_file_path: str
+    status: str = "pending"  # pending | processing | completed | failed
+    is_deleted: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
