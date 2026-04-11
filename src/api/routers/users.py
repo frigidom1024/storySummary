@@ -1,31 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends
 from src.api.schemas.user import UserResponse
-from src.api.security import decode_token
-from src.api.deps import get_user_service
+from src.api.deps import get_user_service, get_current_user_id
 from src.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
-    """从 Authorization header 获取当前用户 ID"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-
-    token = authorization[7:]
-    payload = decode_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
-
-    return user_id
 
 
 @router.get("/me", response_model=UserResponse)

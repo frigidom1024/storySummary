@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from src.api.schemas.book import BookCreate, BookResponse, NodesResponse, SaveNodesRequest
 from src.api.schemas.user import UserResponse
-from src.api.deps import get_book_service, get_node_service, get_user_service
+from src.api.deps import get_book_service, get_node_service, get_user_service, get_current_user_id
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
 from src.models.narrative_node import NarrativeNode, StoryStructure
@@ -10,53 +10,32 @@ from src.models.narrative_node import NarrativeNode, StoryStructure
 router = APIRouter(prefix="/books", tags=["books"])
 
 
-def get_current_user_id(authorization=None) -> str:
-    """简化的用户认证 - 后续会被 deps.py 中的版本替换"""
-    from fastapi import Header, HTTPException
-    from src.api.security import decode_token
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-    token = authorization[7:]
-    payload = decode_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
-    return user_id
-
-
 @router.get("", response_model=List[BookResponse])
 def list_books(
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service)
 ):
     """列出当前用户的所有书籍"""
-    user_id = get_current_user_id(authorization)
     return book_service.get_books_for_user(user_id)
 
 
 @router.post("", response_model=BookResponse)
 def create_book(
     request: BookCreate,
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service)
 ):
     """创建书籍"""
-    user_id = get_current_user_id(authorization)
     return book_service.create_book(user_id, request.title)
 
 
 @router.get("/{book_id}", response_model=BookResponse)
 def get_book(
     book_id: str,
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service)
 ):
     """获取书籍详情"""
-    user_id = get_current_user_id(authorization)
     book = book_service.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -68,11 +47,10 @@ def get_book(
 @router.delete("/{book_id}")
 def delete_book(
     book_id: str,
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service)
 ):
     """删除书籍"""
-    user_id = get_current_user_id(authorization)
     book = book_service.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -85,12 +63,11 @@ def delete_book(
 @router.get("/{book_id}/nodes", response_model=NodesResponse)
 def get_nodes(
     book_id: str,
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service),
     node_service: NodeService = Depends(get_node_service)
 ):
     """获取书籍的节点"""
-    user_id = get_current_user_id(authorization)
     book = book_service.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -110,12 +87,11 @@ def get_nodes(
 def save_nodes(
     book_id: str,
     request: SaveNodesRequest,
-    authorization: str = Depends(lambda: None),
+    user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service),
     node_service: NodeService = Depends(get_node_service)
 ):
     """保存节点到书籍"""
-    user_id = get_current_user_id(authorization)
     book = book_service.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")

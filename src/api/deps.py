@@ -1,4 +1,5 @@
-from typing import Generator
+from typing import Generator, Optional
+from fastapi import Header, HTTPException
 from src.storage.database import Database
 from src.storage.path_builder import PathBuilder
 from src.storage.json_storage import JsonStorage
@@ -55,3 +56,25 @@ def get_node_service() -> NodeService:
     if _node_service is None:
         _node_service = NodeService(get_database(), get_json_storage())
     return _node_service
+
+
+def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+    """从 Authorization header 获取当前用户 ID"""
+    from src.api.security import decode_token
+
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+
+    token = authorization[7:]
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    return user_id
