@@ -1,13 +1,21 @@
-import axios from 'axios'
+import axios, { type AxiosInstance } from 'axios'
 
-const api = axios.create({
-  baseURL: '/api',
-})
+// === Types ===
 
 export interface Book {
   id: string
+  user_id: string
   title: string
-  node_count: number
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  nodes_file_path: string
+  created_at: string
+}
+
+export interface User {
+  id: string
+  username: string
+  email: string
+  profile: Record<string, unknown>
   created_at: string
 }
 
@@ -53,6 +61,24 @@ export interface NarrativeNode {
   is_convergence: boolean
 }
 
+export interface StoryStructure {
+  title: string
+  genre: string
+  target_audience: string
+  themes: string[]
+  arcs: Array<{
+    name: string
+    type: string
+    description: string
+  }>
+}
+
+export interface NodesResponse {
+  book_id: string
+  structure: StoryStructure | null
+  nodes: NarrativeNode[]
+}
+
 export interface ProcessingStatus {
   book_id: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
@@ -60,25 +86,81 @@ export interface ProcessingStatus {
   message: string
 }
 
+export interface AuthToken {
+  access_token: string
+  token_type: string
+}
+
+// === API Client ===
+
+function createApiClient(): AxiosInstance {
+  const client = axios.create({
+    baseURL: '/api',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+
+  // Add auth token to requests
+  client.interceptors.request.use((config) => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  })
+
+  // Handle auth errors
+  client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('user')
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+      }
+      return Promise.reject(error)
+    }
+  )
+
+  return client
+}
+
+export const api = createApiClient()
+
+// === API Methods ===
+
+export const authApi = {
+  register: (username: string, email: string, password: string) =>
+    api.post<AuthToken>('/auth/register', { username, email, password }),
+
+  login: (username: string, password: string) =>
+    api.post<AuthToken>('/auth/login', { username, password }),
+}
+
+export const userApi = {
+  getMe: () => api.get<User>('/users/me'),
+
+  updateMe: (profile: Record<string, unknown>) =>
+    api.patch<User>('/users/me', profile),
+}
+
 export const booksApi = {
   getBooks: () => api.get<Book[]>('/books'),
 
   getBook: (bookId: string) => api.get<Book>(`/books/${bookId}`),
 
-  getBookNodes: (bookId: string) => api.get<NarrativeNode[]>(`/books/${bookId}/nodes`),
+  createBook: (title: string) =>
+    api.post<Book>('/books', { title }),
 
-  getBookStructure: (bookId: string) => api.get('/books/${bookId}/structure'),
+  deleteBook: (bookId: string) =>
+    api.delete(`/books/${bookId}`),
 
-  deleteBook: (bookId: string) => api.delete(`/books/${bookId}`),
+  getBookNodes: (bookId: string) =>
+    api.get<NodesResponse>(`/books/${bookId}/nodes`),
 
-  uploadBook: (file: File, userId: string = 'default-user') => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('user_id', userId)
-    return api.post<{ book_id: string; status: string; message: string }>('/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  },
-
-  getUploadStatus: (bookId: string) => api.get<ProcessingStatus>(`/upload/${bookId}/status`),
+  saveBookNodes: (bookId: string, nodes: NarrativeNode[], structure?: StoryStructure) =>
+    api.post(`/books/${bookId}/nodes`, { nodes, structure }),
 }

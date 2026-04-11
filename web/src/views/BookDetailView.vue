@@ -1,21 +1,38 @@
 <template>
   <div class="book-detail-view">
-    <div v-if="store.loading" class="loading">加载中...</div>
-    <div v-else-if="store.error" class="error">{{ store.error }}</div>
+    <div v-if="store.loading" class="loading">
+      <div class="spinner"></div>
+      <span>加载中...</span>
+    </div>
+
+    <div v-else-if="store.error" class="error-state">
+      {{ store.error }}
+    </div>
+
     <template v-else>
       <div class="book-header">
-        <button class="back-btn" @click="goBack">← 返回</button>
-        <h2 class="book-title">{{ store.currentBook?.title }}</h2>
+        <button class="back-btn" @click="goBack">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          返回
+        </button>
+        <h2 class="book-title">{{ title }}</h2>
         <span class="node-count">{{ store.nodes.length }} 节点</span>
       </div>
 
       <FilterBar
+        v-if="store.threadIds.length > 0"
         :threads="store.threadIds"
         :initial-filter="filter"
         @filter="handleFilter"
       />
 
-      <TimelineView :nodes-by-thread="filteredNodesByThread" />
+      <TimelineView v-if="Object.keys(filteredNodesByThread).length > 0" :nodes-by-thread="filteredNodesByThread" />
+
+      <div v-else class="empty-nodes">
+        暂无节点数据
+      </div>
     </template>
   </div>
 </template>
@@ -44,6 +61,10 @@ const filter = ref<NodeFilter>({
   visibleThreads: [],
 })
 
+const title = computed(() => {
+  return (store.currentBook as any)?.title || '书籍详情'
+})
+
 const filteredNodesByThread = computed(() => {
   const result: Record<string, NarrativeNode[]> = {}
 
@@ -53,12 +74,10 @@ const filteredNodesByThread = computed(() => {
     }
 
     const filtered = nodes.filter((node) => {
-      // Role filter
       if (filter.value.narrativeRoles.length > 0 && !filter.value.narrativeRoles.includes(node.narrative_role)) {
         return false
       }
 
-      // Search filter
       if (filter.value.search) {
         const searchLower = filter.value.search.toLowerCase()
         const matchScene = node.scene?.toLowerCase().includes(searchLower)
@@ -99,9 +118,28 @@ onMounted(() => {
 }
 
 .loading,
-.error {
+.error-state {
   text-align: center;
-  padding: 48px;
+  padding: 48px 24px;
+  color: var(--color-text-secondary);
+}
+
+.error-state {
+  color: var(--color-error);
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .book-header {
@@ -112,26 +150,44 @@ onMounted(() => {
 }
 
 .back-btn {
-  background: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  transition: all var(--transition-fast);
 }
 
 .back-btn:hover {
-  background: var(--color-bg);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.back-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .book-title {
-  font-size: 24px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   flex: 1;
 }
 
 .node-count {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+.empty-nodes {
+  text-align: center;
+  padding: 48px;
   color: var(--color-text-secondary);
 }
 </style>

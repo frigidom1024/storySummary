@@ -8,8 +8,16 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import Header from './components/Header.vue'
+import { useAuthStore } from './stores/auth'
+
+const authStore = useAuthStore()
+
+onMounted(() => {
+  authStore.initAuth()
+})
 </script>
 
 <style>
@@ -21,6 +29,6 @@ import Header from './components/Header.vue'
 .main-content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 32px 24px;
 }
 </style>
