@@ -1,14 +1,14 @@
 <template>
   <div class="book-detail-view">
     <!-- 加载状态 -->
-    <div v-if="store.loading && !book" class="loading">
+    <div v-if="pageState.isLoading.value && !book" class="loading">
       <div class="spinner"></div>
       <span>加载中...</span>
     </div>
 
     <!-- 错误状态 -->
-    <div v-else-if="store.error" class="error-state">
-      {{ store.error }}
+    <div v-else-if="pageState.error.value" class="error-state">
+      {{ pageState.error.value }}
     </div>
 
     <!-- 书籍基本信息 -->
@@ -47,30 +47,30 @@
 
       <!-- AI 解析按钮 -->
       <div v-if="book.status === 'pending' || book.status === 'failed'" class="analyze-section">
-        <button class="analyze-btn" @click="startAnalyze" :disabled="analyzing">
+        <button class="analyze-btn" @click="startAnalyze" :disabled="pageState.isAnalyzing.value">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
           </svg>
-          {{ analyzing ? '解析中...' : '开始 AI 解析' }}
+          {{ pageState.isAnalyzing.value ? '解析中...' : '开始 AI 解析' }}
         </button>
       </div>
 
       <!-- 错误提示（实时分析错误） -->
-      <div v-if="analyzeError" class="error-message">
-        {{ analyzeError }}
+      <div v-if="pageState.error.value" class="error-message">
+        {{ pageState.error.value }}
       </div>
 
       <!-- 错误提示（已保存的错误消息） -->
-      <div v-if="book.status === 'failed' && book.message && !analyzeError" class="error-message">
+      <div v-if="book.status === 'failed' && book.message && !pageState.error.value" class="error-message">
         {{ book.message }}
       </div>
 
       <!-- 解析进度 -->
-      <div v-if="analyzing || wsProgress" class="progress-section">
+      <div v-if="pageState.isAnalyzing.value" class="progress-section">
         <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: (wsProgress?.progress || 0) + '%' }"></div>
+          <div class="progress-fill" :style="{ width: pageState.progress.value + '%' }"></div>
         </div>
-        <div class="progress-text">{{ wsProgress?.message || '准备中...' }}</div>
+        <div class="progress-text">{{ pageState.progressMessage.value }}</div>
       </div>
 
       <!-- 筛选器 -->
@@ -81,10 +81,23 @@
         @filter="handleFilter"
       />
 
-      <!-- 时间线视图 -->
-      <TimelineView v-if="Object.keys(filteredNodesByThread).length > 0" :nodes-by-thread="filteredNodesByThread" />
+      <!-- 视图切换 -->
+      <div v-if="store.nodes.length > 0" class="view-toggle">
+        <button :class="{ active: pageState.viewMode.value === 'graph' }" @click="pageState.setViewMode('graph')">
+          图谱
+        </button>
+        <button :class="{ active: pageState.viewMode.value === 'timeline' }" @click="pageState.setViewMode('timeline')">
+          时间线
+        </button>
+      </div>
 
-      <div v-else-if="store.nodes.length === 0 && !analyzing && !wsProgress" class="empty-nodes">
+      <!-- 图谱视图 -->
+      <NodeGraph v-if="pageState.viewMode.value === 'graph' && store.nodes.length > 0" :nodes="store.nodes" />
+
+      <!-- 时间线视图 -->
+      <TimelineView v-else-if="pageState.viewMode.value === 'timeline' && Object.keys(filteredNodesByThread).length > 0" :nodes-by-thread="filteredNodesByThread" />
+
+      <div v-else-if="store.nodes.length === 0 && !pageState.isAnalyzing.value" class="empty-nodes">
         点击上方按钮开始 AI 解析
       </div>
     </template>
@@ -97,8 +110,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBooksStore } from '../stores/books'
 import { booksApi } from '../api'
 import type { NarrativeNode } from '../api'
+import { createPageStateMachine } from '../composables/usePageStateMachine'
 import FilterBar from '../components/FilterBar.vue'
 import TimelineView from '../components/TimelineView.vue'
+import NodeGraph from '../components/NodeGraph.vue'
 
 interface NodeFilter {
   search: string
@@ -110,15 +125,15 @@ const route = useRoute()
 const router = useRouter()
 const store = useBooksStore()
 
+const pageState = createPageStateMachine()
+
 const filter = ref<NodeFilter>({
   search: '',
   narrativeRoles: [],
   visibleThreads: [],
 })
 
-const analyzing = ref(false)
 const wsProgress = ref<{ progress: number; message: string; status: string } | null>(null)
-const analyzeError = ref<string | null>(null)
 let ws: WebSocket | null = null
 
 const book = computed(() => store.currentBook)
@@ -184,22 +199,16 @@ function goBack() {
 async function startAnalyze() {
   if (!book.value) return
 
-  analyzeError.value = null
-  analyzing.value = true
+  pageState.clearError()
+  pageState.startAnalyze('准备启动...')
   wsProgress.value = { progress: 0, message: '准备启动...', status: 'processing' }
 
-  // 先连接 WebSocket，确保能接收进度消息
   connectWebSocket()
 
-  // 启动分析
   try {
-    console.log('Calling analyzeBook API with bookId:', book.value.id)
-    const response = await booksApi.analyzeBook(book.value.id)
-    console.log('analyzeBook API response:', response)
+    await booksApi.analyzeBook(book.value.id)
   } catch (e: any) {
-    console.error('Failed to start analysis:', e)
-    analyzeError.value = e.response?.data?.message || e.message || '启动分析失败'
-    analyzing.value = false
+    pageState.fail(e.response?.data?.message || e.message || '启动分析失败')
     disconnectWebSocket()
   }
 }
@@ -217,13 +226,13 @@ function connectWebSocket() {
     try {
       const data = JSON.parse(event.data)
       wsProgress.value = data
+      pageState.updateProgress(data.progress, data.message)
 
-      if (data.status === 'completed' || data.status === 'failed') {
-        analyzing.value = false
-        if (data.status === 'completed') {
-          // 刷新节点
-          store.fetchBookNodes(book.value!.id)
-        }
+      if (data.status === 'completed') {
+        pageState.complete()
+        store.fetchBookNodes(book.value!.id)
+      } else if (data.status === 'failed') {
+        pageState.fail(data.message || '解析失败')
       }
     } catch (e) {
       console.error('WebSocket message parse error:', e)
@@ -233,17 +242,14 @@ function connectWebSocket() {
   ws.onclose = (event) => {
     console.log('WebSocket closed', event.code, event.reason)
     ws = null
-    // 如果 WebSocket 关闭但还在分析中，说明连接断了
-    if (analyzing.value && !wsProgress.value?.status) {
-      analyzeError.value = 'WebSocket 连接断开，请重试'
-      analyzing.value = false
+    if (pageState.isAnalyzing.value && !wsProgress.value?.status) {
+      pageState.fail('WebSocket 连接断开，请重试')
     }
   }
 
   ws.onerror = (e) => {
     console.error('WebSocket error:', e)
-    analyzeError.value = 'WebSocket 连接错误，请重试'
-    analyzing.value = false
+    pageState.fail('WebSocket 连接错误，请重试')
   }
 }
 
@@ -256,28 +262,28 @@ function disconnectWebSocket() {
 
 onMounted(async () => {
   const bookId = route.params.id as string
+  pageState.setLoading()
 
-  // 先获取书籍信息
   try {
     const res = await booksApi.getBook(bookId)
     store.currentBook = res.data
   } catch (e: any) {
-    store.error = e.response?.data?.detail || '获取书籍详情失败'
+    pageState.fail(e.response?.data?.detail || '获取书籍详情失败')
     return
   }
 
-  // 如果有节点数据，获取节点
   if (store.currentBook?.status === 'completed') {
     await store.fetchBookNodes(bookId)
-    // 重新设置完整的 book 信息
     const res = await booksApi.getBook(bookId)
     store.currentBook = res.data
+    pageState.complete()
   }
 
-  // 如果正在处理中，连接 WebSocket
   if (store.currentBook?.status === 'processing') {
-    analyzing.value = true
+    pageState.startAnalyze('继续解析...')
     connectWebSocket()
+  } else {
+    pageState.state.value = 'idle'
   }
 })
 
@@ -516,5 +522,38 @@ onUnmounted(() => {
   text-align: center;
   padding: 48px;
   color: var(--color-text-secondary);
+}
+
+/* 视图切换 */
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  width: fit-content;
+}
+
+.view-toggle button {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-toggle button:hover {
+  color: var(--color-text);
+}
+
+.view-toggle button.active {
+  background: var(--color-primary);
+  color: white;
 }
 </style>
