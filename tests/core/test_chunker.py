@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
-from src.core.chunker import TextChunker, ChapterChunker
+from src.utils.reader.text import TextChunker, AdaptiveChunker
 
 
 class TestTextChunker:
@@ -22,10 +22,10 @@ class TestTextChunker:
         assert "Short" in chunks[0].text
 
 
-class TestChapterChunker:
+class TestAdaptiveChunker:
     def test_extracts_chapters(self):
         text = "Chapter 1\n\nContent one.\n\nChapter 2\n\nContent two."
-        chunker = ChapterChunker()
+        chunker = AdaptiveChunker()
         chunks = chunker.chunk(text)
         assert len(chunks) == 2
         assert chunks[0].chapter == "Chapter 1"
@@ -33,7 +33,7 @@ class TestChapterChunker:
 
     def test_extracts_chapters_with_roman_numerals(self):
         text = "Chapter I\n\nContent one.\n\nChapter IV\n\nContent two."
-        chunker = ChapterChunker()
+        chunker = AdaptiveChunker()
         chunks = chunker.chunk(text)
         assert len(chunks) == 2
         assert chunks[0].chapter == "Chapter I"
@@ -46,14 +46,14 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-    from src.core.chunker import ChapterChunker
+    from src.utils.reader.text import AdaptiveChunker
 
     # Test with wind sample
     wind_path = Path(__file__).parent.parent.parent / 'samples' / 'wind'
     with open(wind_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    chunker = ChapterChunker()
+    chunker = AdaptiveChunker()
     chunks = chunker.chunk(text)
 
     print(f"Wind sample: {len(chunks)} chunks")

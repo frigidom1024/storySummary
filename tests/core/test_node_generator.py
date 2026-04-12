@@ -110,11 +110,11 @@ if __name__ == "__main__":
     load_dotenv()
 
     from src.core.node_generator import NarrativeNodeGenerator
-    from src.core.chunker import ChapterChunker
+    from src.utils.reader.text import AdaptiveChunker
 
     async def test_wind():
         generator = NarrativeNodeGenerator()
-        chunker = ChapterChunker()
+        chunker = AdaptiveChunker()
 
         wind_path = Path(__file__).parent.parent.parent / 'samples' / 'wind'
         with open(wind_path, 'r', encoding='utf-8') as f:
