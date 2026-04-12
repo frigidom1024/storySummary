@@ -15,7 +15,7 @@ class WritingContext:
         parts = []
 
         if self.context_summary:
-            parts.append(f"【已写内容摘要】\n{self.context_summary}\n")
+            parts.append(f"【已写内容】\n{self.full_draft()}\n")
 
         if nodes:
             nodes_text = self._format_nodes(nodes)
