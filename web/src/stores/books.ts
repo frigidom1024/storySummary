@@ -81,6 +81,21 @@ export const useBooksStore = defineStore('books', () => {
     }
   }
 
+  async function uploadBook(file: File, meta?: { title?: string; author?: string; publisher?: string }) {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await booksApi.uploadBook(file, meta)
+      books.value.unshift(res.data)
+      return res.data
+    } catch (e: any) {
+      error.value = e.response?.data?.detail || '上传书籍失败'
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearCurrentBook() {
     currentBook.value = null
     nodes.value = []
@@ -100,6 +115,7 @@ export const useBooksStore = defineStore('books', () => {
     fetchBookNodes,
     createBook,
     deleteBook,
+    uploadBook,
     clearCurrentBook,
   }
 })

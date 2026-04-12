@@ -6,6 +6,9 @@ export interface Book {
   id: string
   user_id: string
   title: string
+  author?: string
+  publisher?: string
+  cover_url?: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
   nodes_file_path: string
   created_at: string
@@ -163,4 +166,15 @@ export const booksApi = {
 
   saveBookNodes: (bookId: string, nodes: NarrativeNode[], structure?: StoryStructure) =>
     api.post(`/books/${bookId}/nodes`, { nodes, structure }),
+
+  uploadBook: (file: File, meta?: { title?: string; author?: string; publisher?: string }) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (meta?.title) formData.append('title', meta.title)
+    if (meta?.author) formData.append('author', meta.author)
+    if (meta?.publisher) formData.append('publisher', meta.publisher)
+    return api.post<Book>('/books/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
