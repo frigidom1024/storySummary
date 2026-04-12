@@ -1,5 +1,5 @@
 import re
-from typing import Iterator
+from typing import Optional
 from src.models.chunk import Chunk
 
 
@@ -21,85 +21,262 @@ class TextChunker:
         return chunks
 
 
-class ChapterChunker:
+class SmartChunker:
     """
-    Splits novel text into chapter-based chunks.
+    A通用智能分块器，支持多种文本格式和语言。
 
-    Handles formats like:
-      - "第一部 Ⅰ 今天妈妈死了" (inline: section + Roman numeral)
-      - "第一章 标题" (standalone Chinese chapter)
-      - "Chapter 1" (English)
+    Features:
+    - 自动检测章节标记（中文、英文、日文等）
+    - 支持多种编号系统（阿拉伯数字、中文数字、罗马数字）
+    - 对于无章节标记的文本，按字符数自动分块
+    - 可配置的最小/最大块大小
     """
 
-    # Chinese section markers: 第X部, 第X篇
-    SECTION_PATTERN = re.compile(r'第([0-9零一二三四五六七八九十百千万]+)[部篇]')
+    CHINESE_DIGITS = '零一二三四五六七八九十百千万'
 
-    # Chinese chapter markers: 第X章, 第X节
-    CHAPTER_PATTERN = re.compile(
-        r'第[0-9零一二三四五六七八九十百千万\d]+[章节]'
-    )
+    SECTION_MARKERS = [
+        r'第[0-9零一二三四五六七八九十百千万\d]+[部篇卷册]',
+    ]
 
-    # Standalone Chinese numeral chapter: "一、", "二、", "三、" (at start of line)
-    CHINESE_NUM_CHAPTER_PATTERN = re.compile(r'^([零一二三四五六七八九十百千万]+)、\s*(.*)$', re.MULTILINE)
+    CHAPTER_MARKERS = [
+        r'第[0-9零一二三四五六七八九十百千万\d]+[章节]',
+        r'[0-9零一二三四五六七八九十百千万\d]+[章节]',
+    ]
 
-    # Standalone Chinese numeral with parentheses: "(一)", "(二)", etc.
-    PAREN_CHINESE_NUM_PATTERN = re.compile(r'^\（([零一二三四五六七八九十百千万]+)）\s*(.*)$', re.MULTILINE)
+    NUMBERED_CHAPTER_PATTERNS = [
+        r'^([0-9]+)[\.、\.\s].+$',
+        r'^([A-Z])[\.\s].+$',
+        r'^(\([0-9]+\))[\.\s]*',
+        r'^(\([A-Z]+\))[\.\s]*',
+    ]
 
-    # Roman numeral chapter markers (must be preceded by non-Roman)
-    ROMAN_PATTERN = re.compile(
-        r'(?<=[^ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ])'
-        r'([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ])\s+'
-    )
+    CHINESE_NUM_CHAPTER_PATTERNS = [
+        r'^([零一二三四五六七八九十百千万]+)、\s*(.*)$',
+        r'^\（([零一二三四五六七八九十百千万]+)）\s*(.*)$',
+        r'^\[([零一二三四五六七八九十百千万]+)\]\s*(.*)$',
+    ]
 
-    # Appendix markers: 附 录, 附录
-    APPENDIX_PATTERN = re.compile(r'附\s*录')
-
-    # English Chapter pattern - matches "Chapter 1", "Chapter I", "Chapter IV", etc.
-    ENGLISH_CHAPTER_PATTERN = re.compile(
+    ROMAN_NUMERALS = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ'
+    ENGLISH_CHAPTER_PATTERNS = [
         r'^Chapter\s+([IVX0-9]+)',
-        re.IGNORECASE | re.MULTILINE
-    )
+        r'^CHAPTER\s+([IVX0-9]+)',
+        r'^Part\s+([IVX0-9]+)',
+        r'^PART\s+([IVX0-9]+)',
+        r'^Section\s+([0-9]+)',
+        r'^SECTION\s+([0-9]+)',
+    ]
 
-    # Minimum content length for a chunk
-    MIN_CHUNK_LENGTH = 10
+    JAPANESE_CHAPTER_PATTERNS = [
+        r'^第([0-9一二三四五六七八九十]+)[話篇]',
+        r'^([0-9一二三四五六七八九十]+)話',
+    ]
 
-    def _has_any_marker(self, text: str) -> bool:
-        """Check if text contains any chapter/section marker."""
-        return bool(
-            self.SECTION_PATTERN.search(text) or
-            self.ROMAN_PATTERN.search(text) or
-            self.CHAPTER_PATTERN.match(text) or
-            self.ENGLISH_CHAPTER_PATTERN.match(text) or
-            self.APPENDIX_PATTERN.search(text)
-        )
+    SPECIAL_MARKERS = [
+        r'附\s*录',
+        r'后\s*记',
+        r'序\s*言',
+        r'尾\s*声',
+        r'楔\s*子',
+    ]
+
+    MAX_CHUNK_CHARS = 30000
+    MIN_CHUNK_CHARS = 500
+    IDEAL_CHUNK_CHARS = 8000
+
+    def __init__(
+        self,
+        max_chunk_chars: int = 30000,
+        min_chunk_chars: int = 500,
+        ideal_chunk_chars: int = 8000,
+        auto_split_threshold: int = 15000,
+    ):
+        self.max_chunk_chars = max_chunk_chars
+        self.min_chunk_chars = min_chunk_chars
+        self.ideal_chunk_chars = ideal_chunk_chars
+        self.auto_split_threshold = auto_split_threshold
+        self._compile_patterns()
+
+    def _compile_patterns(self):
+        self.section_patterns = [re.compile(p) for p in self.SECTION_MARKERS]
+        self.chapter_patterns = [re.compile(p) for p in self.CHAPTER_MARKERS]
+        self.numbered_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.NUMBERED_CHAPTER_PATTERNS]
+        self.chinese_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.CHINESE_NUM_CHAPTER_PATTERNS]
+        self.english_chapter_patterns = [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in self.ENGLISH_CHAPTER_PATTERNS]
+        self.japanese_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.JAPANESE_CHAPTER_PATTERNS]
+        self.special_patterns = [re.compile(p) for p in self.SPECIAL_MARKERS]
+
+    def _is_chapter_marker(self, text: str) -> Optional[tuple[str, str]]:
+        text = text.strip()
+        if not text:
+            return None
+
+        for pattern in self.section_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('section', m.group(0))
+
+        for pattern in self.chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', m.group(0))
+
+        for pattern in self.chinese_chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', f"第{m.group(1)}章")
+
+        for pattern in self.english_chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', m.group(0))
+
+        for pattern in self.japanese_chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', m.group(0))
+
+        for pattern in self.numbered_chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', m.group(1))
+
+        for pattern in self.special_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('special', m.group(0))
+
+        if self._looks_like_chapter_title(text):
+            return ('chapter', text[:20])
+
+        return None
+
+    def _looks_like_chapter_title(self, text: str) -> bool:
+        text = text.strip()
+        if len(text) > 50 or len(text) < 2:
+            return False
+
+        if text.isdigit():
+            return True
+
+        chinese_count = len(re.findall(r'[\u4e00-\u9fff]', text))
+        if chinese_count >= 2 and chinese_count / len(text) > 0.5:
+            if not any(c in text for c in '，。、；：""''（）'):
+                if text.startswith(('第', '【', '[')):
+                    return True
+
+        if re.match(r'^[A-Z\s\-]+$', text) and 2 < len(text) < 30:
+            return True
+
+        return False
+
+    def _split_into_sentences(self, text: str) -> list[str]:
+        sentence_endings = r'[。！？!?\.．;；]'
+        sentences = re.split(sentence_endings, text)
+        return [s.strip() for s in sentences if s.strip()]
 
     def chunk(self, text: str) -> list[Chunk]:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+        if not paragraphs:
+            return [Chunk(id="chunk-0000", text=text.strip(), order=0)]
+
+        marker_type = self._detect_overall_marker_type(paragraphs)
+
+        if marker_type == 'none':
+            return self._chunk_without_markers(paragraphs)
+
+        return self._chunk_with_markers(paragraphs)
+
+    def _detect_overall_marker_type(self, paragraphs: list[str]) -> str:
+        has_chinese = False
+        has_english = False
+        has_roman = False
+        chapter_like_count = 0
+
+        for p in paragraphs[:min(20, len(paragraphs))]:
+            if re.search(r'[\u4e00-\u9fff]', p):
+                has_chinese = True
+            if re.search(r'Chapter|CHAPTER|Part|PART|Section|SECTION', p):
+                has_english = True
+            if re.search(r'[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]', p):
+                has_roman = True
+            if self._is_chapter_marker(p):
+                chapter_like_count += 1
+
+        if chapter_like_count >= 3:
+            return 'structured'
+
+        if has_english and not has_chinese:
+            return 'english'
+
+        if has_chinese:
+            return 'chinese'
+
+        return 'numbered'
+
+    def _chunk_without_markers(self, paragraphs: list[str]) -> list[Chunk]:
+        chunks = []
+        current_chunk = []
+        current_size = 0
+        order = 0
+
+        for para in paragraphs:
+            para_size = len(para)
+
+            if current_size + para_size > self.max_chunk_chars and current_chunk:
+                chunk_text = "\n\n".join(current_chunk)
+                if len(chunk_text) >= self.min_chunk_chars:
+                    chunks.append(Chunk(
+                        id=f"chunk-{order:04d}",
+                        text=chunk_text,
+                        chapter=f"片段 {order + 1}",
+                        order=order
+                    ))
+                    order += 1
+                current_chunk = []
+                current_size = 0
+
+            current_chunk.append(para)
+            current_size += para_size
+
+            if current_size >= self.ideal_chunk_chars and len(current_chunk) >= 2:
+                chunk_text = "\n\n".join(current_chunk)
+                chunks.append(Chunk(
+                    id=f"chunk-{order:04d}",
+                    text=chunk_text,
+                    chapter=f"片段 {order + 1}",
+                    order=order
+                ))
+                order += 1
+                current_chunk = []
+                current_size = 0
+
+        if current_chunk:
+            chunk_text = "\n\n".join(current_chunk)
+            chunks.append(Chunk(
+                id=f"chunk-{order:04d}",
+                text=chunk_text,
+                chapter=f"片段 {order + 1}",
+                order=order
+            ))
+
+        return chunks
+
+    def _chunk_with_markers(self, paragraphs: list[str]) -> list[Chunk]:
         chunks = []
         order = 0
 
-        current_section = None   # "第一部", "第二部", etc.
-        current_chapter = None   # "Ⅰ", "第二章", etc.
+        current_section = None
+        current_chapter = None
         current_content = []
-        chars_since_last_marker = 0  # Track content length since last chapter marker
+        content_chars = 0
 
-        def has_real_content(text: str) -> bool:
-            """Check if text has enough prose characters to be real content."""
-            if not text or len(text.strip()) < 5:
-                return False
-            chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
-            # Chinese text needs Chinese chars, other text needs basic length
-            if chinese > 0:
-                return chinese >= 8
-            return len(text.strip()) >= 10
-
-        def finalize_chunk():
-            """Save accumulated content as a chunk."""
-            nonlocal order, current_content, current_chapter, chars_since_last_marker
+        def finalize():
+            nonlocal order, current_content, current_chapter, content_chars
             if current_content:
                 chunk_text = "\n\n".join(current_content)
-                if len(chunk_text) >= self.MIN_CHUNK_LENGTH:
-                    label = current_chapter or current_section
+                if len(chunk_text) >= self.min_chunk_chars:
+                    label = current_chapter or current_section or f"章节 {order + 1}"
                     chunks.append(Chunk(
                         id=f"chunk-{order:04d}",
                         text=chunk_text,
@@ -108,133 +285,119 @@ class ChapterChunker:
                     ))
                     order += 1
                 current_content = []
-                chars_since_last_marker = 0
+                content_chars = 0
 
         i = 0
         while i < len(paragraphs):
             para = paragraphs[i]
+            marker_result = self._is_chapter_marker(para)
 
-            # Detect section marker (第一部, 第二部, etc.) near paragraph start
-            section_match = self.SECTION_PATTERN.search(para)
-            # Detect inline Roman numeral marker
-            roman_match = self.ROMAN_PATTERN.search(para)
-            # Detect standalone chapter line
-            chapter_match = self.CHAPTER_PATTERN.match(para)
-            # Detect English chapter
-            english_match = self.ENGLISH_CHAPTER_PATTERN.match(para)
-            # Detect appendix
-            appendix_match = self.APPENDIX_PATTERN.search(para)
+            if marker_result:
+                marker_type, marker_value = marker_result
 
-            # Handle appendix marker
-            if appendix_match and appendix_match.start() < 30:
-                finalize_chunk()
-                current_chapter = "附录"
-                current_content.append(para[appendix_match.end():].strip() or para)
+                if marker_type == 'section':
+                    finalize()
+                    current_section = marker_value
+                    current_chapter = None
+
+                    rest = para[len(marker_value):].strip()
+                    if rest:
+                        current_content.append(rest)
+                        content_chars += len(rest)
+
+                elif marker_type == 'chapter':
+                    finalize()
+                    current_chapter = marker_value
+
+                    rest = para[len(marker_value):].strip() if len(marker_value) < len(para) else ""
+                    if rest and self._has_real_content(rest):
+                        current_content.append(rest)
+                        content_chars += len(rest)
+
+                elif marker_type == 'special':
+                    finalize()
+                    current_chapter = marker_value
+
                 i += 1
                 continue
 
-            # Handle section marker
-            if section_match and section_match.start() < 30:
-                finalize_chunk()
-                current_section = section_match.group(0)  # e.g., "第一部"
-                current_chapter = None
-                after = para[section_match.end():].strip()
-                if after and has_real_content(after):
-                    current_content.append(after)
-                    chars_since_last_marker = len(after)
-                else:
-                    chars_since_last_marker = 0
-                i += 1
-                continue
-
-            # Handle Roman numeral chapter marker
-            if roman_match and roman_match.start() < 30:
-                after = para[roman_match.end():].strip()
-                if has_real_content(after) or (len(after) > 3):
-                    finalize_chunk()
-                    if current_section:
-                        current_chapter = f"{current_section} {roman_match.group(1)}"
-                    else:
-                        current_chapter = roman_match.group(1)
-                    current_content.append(after)
-                    chars_since_last_marker = len(after)
-                    i += 1
-                    continue
-                elif after:
-                    # Short content after marker - accumulate and check next para
-                    current_content.append(para)
-                    chars_since_last_marker += len(after)
-                    i += 1
-                    continue
-
-            # Handle standalone chapter line
-            if chapter_match:
-                after = para[chapter_match.end():].strip()
-                finalize_chunk()
-                current_chapter = chapter_match.group(0)
-                if has_real_content(after):
-                    current_content.append(after)
-                    chars_since_last_marker = len(after)
-                else:
-                    chars_since_last_marker = 0
-                i += 1
-                continue
-
-            # Handle Chinese numeral chapter: "一、旧书店" or "二、约定"
-            chinese_num_match = self.CHINESE_NUM_CHAPTER_PATTERN.match(para)
-            if chinese_num_match:
-                finalize_chunk()
-                current_chapter = f"第{chinese_num_match.group(1)}章"
-                after = chinese_num_match.group(2).strip()
-                if has_real_content(after):
-                    current_content.append(after)
-                    chars_since_last_marker = len(after)
-                else:
-                    chars_since_last_marker = 0
-                i += 1
-                continue
-
-            # Handle parenthesized Chinese numeral: "(一)", "(二)"
-            paren_match = self.PAREN_CHINESE_NUM_PATTERN.match(para)
-            if paren_match:
-                finalize_chunk()
-                current_chapter = f"第{paren_match.group(1)}章"
-                after = paren_match.group(2).strip()
-                if has_real_content(after):
-                    current_content.append(after)
-                    chars_since_last_marker = len(after)
-                else:
-                    chars_since_last_marker = 0
-                i += 1
-                continue
-
-            # Handle English chapter
-            if english_match:
-                finalize_chunk()
-                current_chapter = f"Chapter {english_match.group(1)}"
-                after = para[english_match.end():].strip()
-                if not after:
-                    current_content.append(para)
-                    chars_since_last_marker = len(para)
-                else:
-                    chars_since_last_marker = 0
-                # Look ahead for content in following paragraphs
-                i += 1
-                while i < len(paragraphs) and not self._has_any_marker(paragraphs[i]):
-                    current_content.append(paragraphs[i])
-                    chars_since_last_marker += len(paragraphs[i])
-                    i += 1
-                continue
-
-            # No chapter marker - accumulate content
             current_content.append(para)
-            chars_since_last_marker += len(para)
+            content_chars += len(para)
 
-            # Auto-split if accumulated content is large with no chapter marker
-            if chars_since_last_marker > 40000 and current_chapter:
-                finalize_chunk()
+            if content_chars >= self.max_chunk_chars:
+                finalize()
+                current_chapter = f"自动分段 {order + 1}"
 
             i += 1
 
-        finalize_chunk()
+        finalize()
         return chunks
+
+    def _has_real_content(self, text: str) -> bool:
+        if not text or len(text.strip()) < 5:
+            return False
+
+        chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
+        if chinese > 0:
+            return chinese >= 5
+
+        alpha = len(re.findall(r'[a-zA-Z]', text))
+        if alpha > 0:
+            return alpha >= 10
+
+        return len(text.strip()) >= 15
+
+
+class AdaptiveChunker:
+    """
+    自适应分块器，根据文本特征自动选择最佳分块策略。
+    """
+
+    def __init__(
+        self,
+        max_chunk_chars: int = 30000,
+        min_chunk_chars: int = 500,
+        ideal_chunk_chars: int = 8000,
+    ):
+        self.smart_chunker = SmartChunker(
+            max_chunk_chars=max_chunk_chars,
+            min_chunk_chars=min_chunk_chars,
+            ideal_chunk_chars=ideal_chunk_chars,
+        )
+        self.text_chunker = TextChunker(chunk_size=1)
+
+    def chunk(self, text: str) -> list[Chunk]:
+        sample = text[:2000]
+
+        paragraph_count = text.count('\n\n') + 1
+        avg_para_len = len(text) / max(paragraph_count, 1)
+
+        if avg_para_len > 500:
+            return self.smart_chunker.chunk(text)
+
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        has_many_short_lines = len([l for l in lines if len(l) < 100]) > len(lines) * 0.6
+
+        if has_many_short_lines and avg_para_len < 100:
+            return self.smart_chunker._chunk_without_markers(
+                [p.strip() for p in text.split('\n\n') if p.strip()]
+            )
+
+        return self.smart_chunker.chunk(text)
+
+
+class ChapterChunker:
+    """
+    Legacy wrapper for backward compatibility.
+    Now delegates to AdaptiveChunker for better results.
+    """
+
+    MIN_CHUNK_LENGTH = 10
+
+    def chunk(self, text: str) -> list[Chunk]:
+        chunker = AdaptiveChunker(
+            max_chunk_chars=30000,
+            min_chunk_chars=self.MIN_CHUNK_LENGTH,
+            ideal_chunk_chars=8000,
+        )
+        return chunker.chunk(text)

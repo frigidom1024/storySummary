@@ -24,6 +24,9 @@ def create_llm(api_key: str = None, model: str = None, api_base: str = None, **k
     llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
     if api_base:
         llm_kwargs["openai_api_base"] = api_base
+    elif "deepseek" in (model or "").lower():
+        # Auto-detect DeepSeek API base when using DeepSeek models
+        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
 
     return ChatOpenAI(**llm_kwargs)
 
