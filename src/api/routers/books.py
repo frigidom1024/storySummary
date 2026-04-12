@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from typing import List, Optional
 import os
 import uuid
@@ -14,6 +14,13 @@ from src.services.analyzer import Analyzer
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.epub_parser import parse_epub
+from src.storage.database import Database
+from src.storage.file_manager import file_manager
+from src.api.exceptions import (
+    NotFoundError, AuthorizationError, ValidationError,
+    FileTooLargeError, UnsupportedFileTypeError, InvalidFileError, EncodingError
+)
+from src.logging_config import debug
 
 router = APIRouter(prefix="/books", tags=["books"])
 
@@ -30,19 +37,19 @@ async def upload_book(
     """上传 epub 或 txt 文件创建书籍。"""
     # 文件类型检查
     if not file.filename:
-        raise HTTPException(status_code=400, detail="文件名为空")
+        raise ValidationError("文件名为空")
 
     filename = file.filename
     ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
     if ext not in ('epub', 'txt'):
-        raise HTTPException(status_code=400, detail="不支持的文件类型，仅支持 epub 和 txt")
+        raise UnsupportedFileTypeError("epub, txt")
 
     # 读取文件内容
     file_bytes = await file.read()
 
     # 文件大小检查 (50MB)
     if len(file_bytes) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件大小超过 50MB")
+        raise FileTooLargeError()
 
     # 解析元数据
     book_title = title or ''
@@ -78,9 +85,9 @@ async def upload_book(
             # 清理临时文件
             os.unlink(tmp_path.name)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise ValidationError(str(e))
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"epub 文件格式错误: {e}")
+            raise InvalidFileError(f"epub 文件格式错误: {e}")
     else:
         # txt 编码检测
         for encoding in ('utf-8', 'gbk', 'gb2312'):
@@ -90,28 +97,18 @@ async def upload_book(
             except UnicodeDecodeError:
                 continue
         else:
-            raise HTTPException(status_code=400, detail="无法解析文本编码，请使用 UTF-8、GBK 或 GB2312 编码")
+            raise EncodingError("无法解析文本编码，请使用 UTF-8、GBK 或 GB2312 编码")
         book_title = title or ''
 
-    # 生成 book_id 和路径
+    # 生成 book_id
     book_id = str(uuid.uuid4())
     nodes_file_path = f"data/books/{book_id}"
 
-    # 保存原始文件到 data 目录
-    os.makedirs("data", exist_ok=True)
-    file_path = os.path.join("data", f"{book_id}.{ext}")
-    with open(file_path, 'wb') as f:
-        f.write(file_bytes)
+    # 保存文件
+    file_manager.save_book_file(book_id, file_bytes, ext)
 
     # 保存封面
-    cover_url = None
-    if cover_image and cover_extension:
-        covers_dir = "data/covers"
-        os.makedirs(covers_dir, exist_ok=True)
-        cover_path = os.path.join(covers_dir, f"{book_id}.{cover_extension}")
-        with open(cover_path, 'wb') as f:
-            f.write(cover_image)
-        cover_url = f"/api/covers/{book_id}.{cover_extension}"
+    cover_url = file_manager.save_cover(book_id, cover_image, cover_extension) if cover_image else None
 
     # 创建书籍记录
     new_book = book_service.create_book_object(
@@ -133,46 +130,74 @@ async def analyze_book(
     book_service: BookService = Depends(get_book_service)
 ):
     """启动书籍 AI 解析（异步，通过 WebSocket 推送进度）"""
+    import sys
+    sys.stderr.write(f"[analyze_book] FUNCTION CALLED book_id={book_id}\n")
+    sys.stderr.flush()
+    print(f"[analyze_book] FUNCTION CALLED book_id={book_id}", file=sys.stderr, flush=True)
+    debug("books", "Received analyze request for book_id={}", book_id)
+
     book = book_service.get_book(book_id)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        print(f"[analyze_book] Book NOT FOUND: {book_id}", file=sys.stderr, flush=True)
+        debug("books", "Book not found: {}", book_id)
+        raise NotFoundError("书籍")
     if book.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to analyze this book")
+        print(f"[analyze_book] UNAUTHORIZED book_id={book_id} user_id={user_id} book.user_id={book.user_id}", file=sys.stderr, flush=True)
+        debug("books", "Unauthorized access attempt for book_id={} by user_id={}", book_id, user_id)
+        raise AuthorizationError("无权分析此书籍")
 
     # 更新状态为 processing
+    print(f"[analyze_book] Updating status to processing: {book_id}", file=sys.stderr, flush=True)
+    debug("books", "Updating book status to processing: {}", book_id)
     book_service.update_book_status(book_id, "processing")
 
+    # 检查文件是否存在
+    if not file_manager.book_file_exists(book_id):
+        debug("books", "Book file not found for book_id={}", book_id)
+        book_service.update_book_status(book_id, "failed", "书籍文件不存在，请重新上传")
+        raise NotFoundError("书籍文件不存在，请重新上传")
+
     # 启动异步分析
+    print(f"[analyze_book] Creating asyncio task for _run_analysis: {book_id}", file=sys.stderr, flush=True)
+    debug("books", "Starting async analysis task for book_id={}", book_id)
     asyncio.create_task(_run_analysis(book_id))
+    print(f"[analyze_book] Task created, returning response: {book_id}", file=sys.stderr, flush=True)
 
     return {"message": "Analysis started", "book_id": book_id}
 
 
 async def _run_analysis(book_id: str):
     """Run analysis in background with progress reporting."""
+    import sys
+    print(f"[_run_analysis] started for book_id={book_id}", file=sys.stderr, flush=True)
+
     async def progress_callback(progress: int, message: str):
+        print(f"[progress_callback] book_id={book_id} progress={progress} message={message}", file=sys.stderr, flush=True)
+        debug("progress", "book_id={} progress={} message={}", book_id, progress, message)
         await manager.send_progress(book_id, progress, message)
 
     try:
+        print(f"[_run_analysis] Creating Analyzer for book_id={book_id}", file=sys.stderr, flush=True)
         analyzer = Analyzer()
-        file_type = None
-        actual_path = None
 
-        # 查找 epub 或 txt 文件
-        for ext in ['epub', 'txt']:
-            potential_path = f"data/{book_id}.{ext}"
-            if os.path.exists(potential_path):
-                actual_path = potential_path
-                file_type = ext
-                break
-
-        if not actual_path or not file_type:
+        # 使用 FileManager 查找文件
+        book_file = file_manager.get_book_file(book_id)
+        if not book_file:
+            print(f"[_run_analysis] Book file NOT FOUND for book_id={book_id}", file=sys.stderr, flush=True)
+            debug("books", "Book file not found for book_id={}", book_id)
             await manager.send_progress(book_id, 0, "未找到书籍文件", "failed")
+            Database().update_book_status(book_id, "failed", "未找到书籍文件")
             return
 
+        actual_path, file_type = book_file
+        print(f"[_run_analysis] Found file type={file_type} path={actual_path} for book_id={book_id}", file=sys.stderr, flush=True)
+        debug("books", "Found file type={} path={} for book_id={}", file_type, actual_path, book_id)
         await analyzer.analyze(book_id, actual_path, file_type, progress_callback)
     except Exception as e:
-        await manager.send_progress(book_id, 0, f"解析失败: {str(e)}", "failed")
+        error_msg = str(e)
+        debug("books", "Analysis failed for book_id={} error={}", book_id, error_msg)
+        await manager.send_progress(book_id, 0, f"解析失败: {error_msg}", "failed")
+        Database().update_book_status(book_id, "failed", error_msg)
 
 
 @router.websocket("/{book_id}/ws")
@@ -218,9 +243,9 @@ def get_book(
     """获取书籍详情"""
     book = book_service.get_book(book_id)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise NotFoundError("书籍")
     if book.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this book")
+        raise AuthorizationError("无权访问此书籍")
     return book
 
 
@@ -233,9 +258,14 @@ def delete_book(
     """删除书籍"""
     book = book_service.get_book(book_id)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise NotFoundError("书籍")
     if book.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this book")
+        raise AuthorizationError("无权删除此书籍")
+
+    # 清理文件
+    file_manager.cleanup_book_data(book_id)
+
+    # 删除数据库记录
     book_service.delete_book(book_id)
     return {"message": "Book deleted"}
 
@@ -250,9 +280,9 @@ def get_nodes(
     """获取书籍的节点"""
     book = book_service.get_book(book_id)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise NotFoundError("书籍")
     if book.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this book")
+        raise AuthorizationError("无权访问此书籍")
 
     nodes = node_service.get_nodes(book_id)
     structure = node_service.get_structure(book_id)
@@ -274,9 +304,9 @@ def save_nodes(
     """保存节点到书籍"""
     book = book_service.get_book(book_id)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise NotFoundError("书籍")
     if book.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to modify this book")
+        raise AuthorizationError("无权修改此书籍")
 
     # 更新书籍状态为 processing
     book_service.update_book_status(book_id, "processing")
