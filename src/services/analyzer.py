@@ -3,7 +3,7 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Optional, Callable
-from src.core.chunker import ChapterChunker
+from src.core.chunker import chunk_by_book_id
 from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
@@ -20,7 +20,6 @@ class Analyzer:
     def __init__(self, db_path: str = "data/story_summary.db", data_path: str = "data"):
         self.db = Database(db_path)
         self.json_storage = JsonStorage()
-        self.chunker = ChapterChunker()
         self.node_generator = NarrativeNodeGenerator()
         self.structure_builder = StructureBuilder()
         self.vector_store = VectorStore(f"{data_path}/vectors")
@@ -46,20 +45,22 @@ class Analyzer:
 
         await report(0, "开始解析文件...")
 
-        # Read book content
-        debug("analyzer", "book_id={} reading file type={}", book_id, file_type)
-        if file_type == 'epub':
-            text = await self._read_epub(file_path)
-        else:
-            text = await self._read_txt(file_path)
-        debug("analyzer", "book_id={} text length={} chars", book_id, len(text))
+        # Save file to books directory for chunk_by_book_id
+        debug("analyzer", "book_id={} saving file to books dir", book_id)
+        book_dir = Path(f"data/books/{book_id}")
+        book_dir.mkdir(parents=True, exist_ok=True)
+
+        suffix = f".{file_type}"
+        dest_path = book_dir / f"book{suffix}"
+        import shutil
+        shutil.copy2(file_path, dest_path)
 
         await report(5, "文件解析完成")
 
         # Chunk the novel
         await report(10, "开始分章...")
         debug("analyzer", "book_id={} starting chunking", book_id)
-        chunks = self.chunker.chunk(text)
+        chunks = chunk_by_book_id(book_id)
         debug("analyzer", "book_id={} chunked into {} chapters", book_id, len(chunks))
         await report(20, f"分章完成，共 {len(chunks)} 个章节")
         await asyncio.sleep(0.1)  # Small delay for UI update
