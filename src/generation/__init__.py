@@ -3,7 +3,7 @@ from src.generation.state import WritingState, WritingPhase
 from src.generation.pipeline import ManuscriptPipeline
 from src.generation.context import WritingContext
 from src.generation.writer import ChapterWriter
-from src.generation.polish import PolishPass
+from src.generation.polish import PolishAgent
 
 __all__ = [
     "ManuscriptPipeline",
@@ -12,5 +12,5 @@ __all__ = [
     "WritingPhase",
     "WritingContext",
     "ChapterWriter",
-    "PolishPass",
+    "PolishAgent",
 ]

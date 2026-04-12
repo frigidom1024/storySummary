@@ -11,7 +11,7 @@ from src.storage.json_storage import JsonStorage
 from src.generation.state import WritingState, WritingPhase
 from src.generation.context import WritingContext
 from src.generation.writer import ChapterWriter
-from src.generation.polish import PolishPass
+from src.generation.polish import PolishAgent
 
 
 class ManuscriptPipeline:
@@ -22,7 +22,7 @@ class ManuscriptPipeline:
         self.db = Database()
         self.json_storage = JsonStorage()
         self.writer = ChapterWriter()
-        self.polisher = PolishPass()
+        self.polisher = PolishAgent()
 
     async def run(self, book_id: str) -> ManuscriptResult:
         """运行生成流程"""
