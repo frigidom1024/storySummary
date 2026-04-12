@@ -90,6 +90,15 @@ export interface ProcessingStatus {
   message: string
 }
 
+export interface ManuscriptResponse {
+  book_id: string
+  title: string
+  phase: string
+  chapters_written: number
+  total_chunks: number
+  manuscript: string
+}
+
 export interface AuthToken {
   access_token: string
   token_type: string
@@ -170,6 +179,13 @@ export const booksApi = {
 
   analyzeBook: (bookId: string) =>
     api.post(`/books/${bookId}/analyze`),
+
+  generateManuscript: (bookId: string, options?: {
+    style_key?: string
+    custom_rules?: string
+    reference_script?: string
+  }) =>
+    api.post<ManuscriptResponse>(`/books/${bookId}/manuscript`, options || {}),
 
   uploadBook: (file: File, meta?: { title?: string; author?: string; publisher?: string }) => {
     const formData = new FormData()

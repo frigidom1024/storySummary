@@ -45,6 +45,63 @@
         </div>
       </div>
 
+      <!-- 口播稿生成区域 -->
+      <div v-if="book.status === 'completed'" class="manuscript-section">
+        <div class="section-header" @click="toggleManuscriptPanel">
+          <h3>生成口播稿</h3>
+          <button class="toggle-btn">{{ showManuscriptPanel ? '收起' : '展开' }}</button>
+        </div>
+
+        <div v-if="showManuscriptPanel" class="manuscript-panel">
+          <div class="option-group">
+            <label class="option-label">风格选择</label>
+            <select v-model="manuscriptOptions.style_key" class="style-select">
+              <option v-for="opt in STYLE_OPTIONS" :key="opt.key" :value="opt.key">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="option-group">
+            <label class="option-label">自定义规则（可选）</label>
+            <textarea
+              v-model="manuscriptOptions.custom_rules"
+              class="custom-rules-input"
+              placeholder="例如：增加更多个人感悟..."
+              rows="3"
+            ></textarea>
+          </div>
+
+          <div class="option-group">
+            <label class="option-label">参考口播稿（可选）</label>
+            <textarea
+              v-model="manuscriptOptions.reference_script"
+              class="reference-input"
+              placeholder="粘贴一段参考的口播稿，AI会学习此风格..."
+              rows="5"
+            ></textarea>
+          </div>
+
+          <button
+            class="generate-btn"
+            @click="generateManuscript"
+            :disabled="isGeneratingManuscript"
+          >
+            {{ isGeneratingManuscript ? '生成中...' : '开始生成' }}
+          </button>
+
+          <div v-if="manuscriptError" class="error-message">{{ manuscriptError }}</div>
+
+          <!-- 生成结果 -->
+          <div v-if="manuscriptResult" class="manuscript-result">
+            <div class="result-header">
+              <span>生成完成 {{ manuscriptResult.chapters_written }}/{{ manuscriptResult.total_chunks }} 章</span>
+            </div>
+            <div class="manuscript-content">{{ manuscriptResult.manuscript }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- AI 解析按钮 -->
       <div v-if="book.status === 'pending' || book.status === 'failed'" class="analyze-section">
         <button class="analyze-btn" @click="startAnalyze" :disabled="pageState.isAnalyzing.value">
@@ -109,17 +166,37 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBooksStore } from '../stores/books'
 import { booksApi } from '../api'
-import type { NarrativeNode } from '../api'
+import type { NarrativeNode, ManuscriptResponse } from '../api'
 import { createPageStateMachine } from '../composables/usePageStateMachine'
 import FilterBar from '../components/FilterBar.vue'
 import TimelineView from '../components/TimelineView.vue'
 import NodeGraph from '../components/NodeGraph.vue'
+
+// 预设风格
+const STYLE_OPTIONS = [
+  { key: '', label: '默认风格' },
+  { key: '轻松聊天', label: '轻松聊天' },
+  { key: '深度解读', label: '深度解读' },
+  { key: '故事讲述', label: '故事讲述' },
+  { key: '专业评论', label: '专业评论' },
+]
 
 interface NodeFilter {
   search: string
   narrativeRoles: string[]
   visibleThreads: string[]
 }
+
+// 口播稿生成相关状态
+const showManuscriptPanel = ref(false)
+const manuscriptOptions = ref({
+  style_key: '',
+  custom_rules: '',
+  reference_script: '',
+})
+const isGeneratingManuscript = ref(false)
+const manuscriptResult = ref<ManuscriptResponse | null>(null)
+const manuscriptError = ref<string | null>(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -258,6 +335,33 @@ function disconnectWebSocket() {
     ws.close()
     ws = null
   }
+}
+
+async function generateManuscript() {
+  if (!book.value) return
+
+  isGeneratingManuscript.value = true
+  manuscriptError.value = null
+  manuscriptResult.value = null
+
+  try {
+    const options = {
+      style_key: manuscriptOptions.value.style_key || undefined,
+      custom_rules: manuscriptOptions.value.custom_rules || undefined,
+      reference_script: manuscriptOptions.value.reference_script || undefined,
+    }
+    const res = await booksApi.generateManuscript(book.value.id, options)
+    manuscriptResult.value = res.data
+    showManuscriptPanel.value = true
+  } catch (e: any) {
+    manuscriptError.value = e.response?.data?.detail || e.message || '生成失败'
+  } finally {
+    isGeneratingManuscript.value = false
+  }
+}
+
+function toggleManuscriptPanel() {
+  showManuscriptPanel.value = !showManuscriptPanel.value
 }
 
 onMounted(async () => {
@@ -555,5 +659,129 @@ onUnmounted(() => {
 .view-toggle button.active {
   background: var(--color-primary);
   color: white;
+}
+
+/* 口播稿生成区域 */
+.manuscript-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-header:hover {
+  background: var(--color-surface-hover);
+}
+
+.section-header h3 {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.toggle-btn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.manuscript-panel {
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.option-group {
+  margin-top: 16px;
+}
+
+.option-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.style-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.custom-rules-input,
+.reference-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.generate-btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 16px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.generate-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.manuscript-result {
+  margin-top: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.result-header {
+  padding: 10px 14px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.manuscript-content {
+  padding: 16px;
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  max-height: 500px;
+  overflow-y: auto;
 }
 </style>
