@@ -64,7 +64,7 @@ class BookReader(ABC):
         return {}
 
 def read_book(book_path: str) -> BookReader:
-    """自动检测文件类型，返回对应 Reader（.epub → EpubReader，.pdf → PdfReader）"""
+    """自动检测文件类型，返回对应 Reader（.epub → EpubReader，.pdf → PdfReader，.txt → TxtReader）"""
 ```
 
 #### `EpubReader`（`epub.py`）
@@ -89,9 +89,18 @@ class PdfReader(BookReader):
     @property def metadata(self) -> dict
 ```
 
-#### 文本分块器（`text.py`）
-用于无原生章节结构的纯文本（TXT 等），对原始文本进行模式检测分块：
+#### 文本读取器和分块器（`text.py`）
+用于无原生章节结构的纯文本（TXT 等）：
 ```python
+class TxtReader(BookReader):
+    """读取 TXT 文件，无章节结构"""
+    def __init__(self, txt_path: str)
+    def read(self) -> str
+    @property def title(self) -> str
+    @property def author(self) -> str
+    @property def chapters(self) -> list[dict]  # 始终返回空列表
+    @property def metadata(self) -> dict
+
 class TextChunker:
     def chunk(self, text: str) -> list[Chunk]
 
@@ -119,45 +128,59 @@ def chunk_by_book_id(book_id: str, data_path: str = "data") -> list[Chunk]:
 
 ## 数据流
 
-### 路径 A：EPUB（原生章节结构）
+`chunk_by_book_id(book_id)` 内部逻辑：
+
 ```
 chunk_by_book_id(book_id)
   │
-  ├─ 定位 epub 文件
+  ├─ 定位书籍文件（ epub 或 pdf）
   │
-  ├─ read_book(epub_path) → EpubReader
-  │     ├─ .chapters = [{"title": "第一章", "content": "...", "order": 0}, ...]
+  ├─ read_book(path)
+  │     ├─ 有 .chapters（非空列表）→ 直接构建 chunks
+  │     └─ 无 .chapters（空列表）→ AdaptiveChunker().chunk(reader.read())
   │
-  └─ 直接从 reader.chapters 构建 list[Chunk]
+  └─ 返回 list[Chunk]
 ```
 
-### 路径 B：PDF / TXT（无原生章节）
+三种文件类型处理：
+
+| 文件类型 | .chapters | 处理方式 |
+|----------|-----------|----------|
+| EPUB | 有（原生章节结构） | 直接从 chapters 构建 chunks |
+| PDF | 可能有（_detect_chapters 检测到的章节） | 有章节→用章节；无章节→AdaptiveChunker |
+| TXT | 无 | AdaptiveChunker().chunk(text) |
+
+TXT 文件通过 `TxtReader` 读取（`reader/text.py`），只返回 `read()` 文本和空的 `chapters`。
+
+## API 变更说明（Breaking Change）
+
+旧接口：
+```python
+chunks = ChapterChunker().chunk(text)  # 传入已提取的文本
 ```
-chunk_by_book_id(book_id)
-  │
-  ├─ 定位文件
-  │
-  ├─ read_book(path) → PdfReader / 直接读TXT
-  │     └─ .chapters = []（空）
-  │
-  └─ AdaptiveChunker().chunk(reader.read())
-        └─ 对全文进行模式检测分块 → list[Chunk]
+
+新接口：
+```python
+chunks = chunk_by_book_id(book_id)  # 只需 book_id，内部读取文件
 ```
+
+所有调用方（`pipeline.py`、`analyzer.py`、`generation/pipeline.py` 等）需更新为通过 `book_id` 调用，不再传入已提取的文本。
 
 ## 实现步骤
 
 1. 创建 `src/utils/reader/` 目录
-2. 创建 `src/utils/reader/__init__.py`：搬入 `BookReader` 抽象类 + `read_book()` 工厂函数
+2. 创建 `src/utils/reader/__init__.py`：搬入 `BookReader` 抽象类 + `read_book()` 工厂函数（支持 .epub、.pdf、.txt）
 3. 创建 `src/utils/reader/epub.py`：搬入 `EpubReader`（合并 `epub_reader.py`）
 4. 创建 `src/utils/reader/pdf.py`：搬入 `PdfReader`（合并 `book_adapter.py` 中的实现）
-5. 创建 `src/utils/reader/text.py`：搬入 `SmartChunker`、`AdaptiveChunker`、`TextChunker`（从 `core/chunker.py` 移出）
+5. 创建 `src/utils/reader/text.py`：搬入 `TxtReader`、`SmartChunker`、`AdaptiveChunker`、`TextChunker`
 6. 重写 `src/core/chunker.py`：
    - 删除所有具体分块器实现（只剩 `chunk_by_book_id`）
    - 删除 `chunk_epub_by_id`、`chunk_epub` 旧接口
-   - 删除 `ChapterChunker`（删除）
+   - 删除 `ChapterChunker`
 7. 删除 `src/utils/book_adapter.py`
 8. 删除 `src/utils/epub_reader.py`
 9. 删除 `src/utils/epub_chunker.py`
+10. 更新所有调用方使用 `chunk_by_book_id(book_id)`
 
 ## 需要更新的调用方
 
@@ -165,9 +188,9 @@ chunk_by_book_id(book_id)
 |------|----------|------|
 | `src/pipeline.py` | `ChapterChunker().chunk(text)` | 改用 `chunk_by_book_id(book_id)` |
 | `src/services/analyzer.py` | `ChapterChunker().chunk(text)`，`_read_epub()`、`_read_txt()` 直接读取 | 统一通过 `chunk_by_book_id()` |
-| `tests/core/test_chunker.py` | `SmartChunker`、`AdaptiveChunker` | 改为从 `src.utils.reader.text` 导入 |
+| `tests/core/test_chunker.py` | 从 `src.core.chunker` 导入分块器 | 改为从 `src.utils.reader.text` 导入 |
 | `tests/core/test_node_generator.py` | `ChapterChunker()` | 改为 `AdaptiveChunker` |
-| `src/generation/pipeline.py` | `ChapterChunker()` | 同上 |
+| `src/generation/pipeline.py` | `ChapterChunker` 导入（未实际使用） | 移除或替换为 `AdaptiveChunker` |
 
 ## 待删减代码
 
