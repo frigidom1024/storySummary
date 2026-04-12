@@ -1,18 +1,19 @@
 import os
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
 from src.core.prompts import CHAPTER_WRITING_PROMPT
 from src.core.node_generator import create_llm
+from src.logging_config import debug
 
 
 class ChapterWriter:
     """单章生成器"""
 
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(self, api_key: str = None, model: str = None, debug_mode: bool = False):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.model = model
+        self.debug_mode = debug_mode
         self.llm = create_llm(api_key=self.api_key, model=model, temperature=0.7)
 
     async def write(
@@ -33,8 +34,14 @@ class ChapterWriter:
             core_themes="（待补充）",
             established_claims=context_summary or "（无）",
             nodes_summary=nodes_summary,
-            chunk_text=chunk.text[:8000],
+            chunk_text=chunk.text,
         )
+
+        if self.debug_mode:
+            debug("writer", "[WRITE] 生成章节: {}", chunk.chapter or f"第{chunk.order + 1}章")
+            debug("writer", "[WRITE] Prompt 长度: {} 字", len(prompt))
+            debug("writer", "[WRITE] Context Summary: {}",
+                  context_summary[:100] + "..." if len(context_summary) > 100 else context_summary)
 
         messages = [
             SystemMessage(content="你是一个播客主播，输出纯文本稿子。"),
@@ -45,7 +52,12 @@ class ChapterWriter:
         if not response.content:
             raise ValueError("LLM returned empty response")
 
-        return response.content.strip()
+        result = response.content.strip()
+
+        if self.debug_mode:
+            debug("writer", "[WRITE] 生成完成: {} 字", len(result))
+
+        return result
 
     def _format_nodes(self, nodes: list[NarrativeNode]) -> str:
         lines = []

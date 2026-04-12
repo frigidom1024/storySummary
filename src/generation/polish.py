@@ -6,6 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.messages import SystemMessage
 from src.core.node_generator import create_llm
+from src.logging_config import debug
 
 if TYPE_CHECKING:
     from src.models.chunk import Chunk
@@ -51,8 +52,10 @@ def create_chunk_tool(chunks: Dict[str, "Chunk"]):
 
 # ====================== 核心：ReAct Agent 润色器 ======================
 class PolishAgent:
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(self, api_key: str = None, model: str = None, debug_mode: bool = False):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        self.model = model
+        self.debug_mode = debug_mode
         self.llm = create_llm(api_key=self.api_key, model=model, temperature=0.7)
 
     async def polish(
@@ -60,6 +63,9 @@ class PolishAgent:
         drafts: List["ChapterDraft"],
         chunks: Dict[str, "Chunk"],
     ) -> str:
+        if self.debug_mode:
+            debug("polish", "[POLISH] 开始润色: drafts={} chunks={}", len(drafts), len(chunks))
+
         # 1. 创建工具
         get_chunk_tool = create_chunk_tool(chunks)
         tools = [get_chunk_tool]
@@ -77,13 +83,17 @@ class PolishAgent:
             agent=agent,
             tools=tools,
             max_iterations=12,
-            verbose=True,
+            verbose=self.debug_mode,
             handle_parsing_errors="continue"
         )
 
-        # 4. 构建输入（和你原来一样）
+        # 4. 构建输入
         chapters_index = self._build_chapters_index(drafts, chunks)
         chapters_text = self._build_chapters_text(drafts)
+
+        if self.debug_mode:
+            debug("polish", "[POLISH] 章节索引:\n{}", chapters_index)
+            debug("polish", "[POLISH] 待润色稿子总长度: {} 字", len(chapters_text))
 
         user_input = f"""
 请润色以下多章节播客稿：
@@ -97,9 +107,16 @@ class PolishAgent:
 请先通读全文 → 按需调用get_chunk_context核对原文 → 逐章润色 → 输出最终稿。
 """
 
-        # 5. 运行 Agent（自动思考、自动调用工具、自动循环）
+        # 5. 运行 Agent
         result = await executor.ainvoke({"input": user_input})
-        return result["output"].strip()
+
+        output = result["output"].strip()
+
+        if self.debug_mode:
+            debug("polish", "[POLISH] 润色完成: {} 字", len(output))
+            debug("polish", "[POLISH] 输出预览: {}...", output[:200].replace('\n', ' '))
+
+        return output
 
     # ===================== 你原来的工具函数，完全不变 =====================
     def _build_chapters_index(self, drafts, chunks):
