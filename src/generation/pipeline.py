@@ -1,7 +1,9 @@
 import os
 import re
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
+from datetime import datetime
 
 from src.models.narrative_node import NarrativeNode
 from src.models.chunk import Chunk
@@ -15,6 +17,70 @@ from src.generation.polish import PolishAgent
 from src.logging_config import debug
 
 
+class DebugRecord:
+    """记录每一步的完整内容"""
+
+    def __init__(self):
+        self.data: dict[str, Any] = {
+            "created_at": datetime.now().isoformat(),
+            "phases": {}
+        }
+
+    def add_phase(self, name: str, content: dict):
+        self.data["phases"][name] = content
+
+    def add_prepare(self, nodes: list):
+        self.data["phases"]["prepare"] = {
+            "nodes_count": len(nodes),
+            "nodes": [self._node_to_dict(n) for n in nodes]
+        }
+
+    def add_writing_chapter(self, index: int, chunk: Chunk, nodes: list,
+                           prompt_context: str, generated_text: str):
+        self.data["phases"][f"writing_chapter_{index}"] = {
+            "chunk_id": chunk.id,
+            "chunk_title": chunk.chapter,
+            "chunk_text_length": len(chunk.text),
+            "chunk_text_preview": chunk.text[:500],
+            "nodes": [self._node_to_dict(n) for n in nodes],
+            "prompt_context": prompt_context,
+            "generated_text": generated_text,
+            "generated_text_length": len(generated_text)
+        }
+
+    def add_polish(self, input_text: str, output_text: str):
+        self.data["phases"]["polish"] = {
+            "input_length": len(input_text),
+            "input_text": input_text,
+            "output_length": len(output_text),
+            "output_text": output_text
+        }
+
+    def add_result(self, manuscript_text: str, chapters_written: int, total_chunks: int):
+        self.data["result"] = {
+            "manuscript_length": len(manuscript_text),
+            "manuscript_text": manuscript_text,
+            "chapters_written": chapters_written,
+            "total_chunks": total_chunks
+        }
+
+    def save(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _node_to_dict(self, n: NarrativeNode) -> dict:
+        return {
+            "id": n.id,
+            "scene": n.scene,
+            "situation": n.situation,
+            "narrative_role": n.narrative_role,
+            "turning_point": n.turning_point,
+            "emotional_arc": n.emotional_arc,
+            "mood_tone": n.mood_tone,
+            "characters": [{"name": c.name} for c in (n.characters or [])]
+        }
+
+
 class ManuscriptPipeline:
     """口播稿生成 Pipeline"""
 
@@ -25,6 +91,7 @@ class ManuscriptPipeline:
         self.json_storage = JsonStorage()
         self.writer = ChapterWriter(debug_mode=debug_mode)
         self.polisher = PolishAgent(debug_mode=debug_mode)
+        self.debug_record: Optional[DebugRecord] = None
 
     async def run(self, book_id: str) -> ManuscriptResult:
         """运行生成流程"""
@@ -33,6 +100,10 @@ class ManuscriptPipeline:
             raise ValueError(f"Book not found: {book_id}")
 
         debug("pipeline", "[1] 书籍信息: book_id={} title={}", book_id, book.title)
+
+        # 初始化调试记录
+        if self.debug_mode:
+            self.debug_record = DebugRecord()
 
         # 2. 加载或创建状态
         state_path = WritingState.get_state_path(book_id, self.output_dir, book.title)
@@ -48,6 +119,23 @@ class ManuscriptPipeline:
         nodes = self._load_nodes(book_id)
         chunks = self._load_chunks(book_id)
         debug("pipeline", "[3] 加载数据: nodes_count={} chunks_count={}", len(nodes), len(chunks))
+
+        if self.debug_mode:
+            self.debug_record.data["book_info"] = {
+                "book_id": book_id,
+                "title": book.title,
+                "nodes_count": len(nodes),
+                "chunks_count": len(chunks)
+            }
+            self.debug_record.data["all_chunks"] = [
+                {
+                    "id": c.id,
+                    "chapter": c.chapter,
+                    "text_length": len(c.text),
+                    "text_preview": c.text[:1000]
+                }
+                for c in chunks
+            ]
 
         # 4. [PREPARE] 阶段
         if state.phase == WritingPhase.PREPARE:
@@ -72,13 +160,7 @@ class ManuscriptPipeline:
                   state.current_chunk_index + 1, len(chunks), chunk.id, chunk.chapter or '无标题')
             debug("pipeline", "[5.2] 本章节点数: {} 个", len(chunk_nodes))
 
-            # 打印节点信息
-            for i, n in enumerate(chunk_nodes):
-                debug("pipeline", "[5.3] 节点{}: role={} scene={}",
-                      i+1, n.narrative_role, n.scene[:50] if n.scene else '无')
-
             prompt_context = context.build_prompt_context(chunk, chunk_nodes)
-            debug("pipeline", "[5.4] 上下文摘要长度: {} 字", len(prompt_context))
 
             chapter_text = await self.writer.write(
                 chunk=chunk,
@@ -87,9 +169,16 @@ class ManuscriptPipeline:
             )
 
             debug("pipeline", "[5.5] 生成章节长度: {} 字", len(chapter_text))
-            if self.debug_mode and chapter_text:
-                preview = chapter_text[:200].replace('\n', ' ')
-                debug("pipeline", "[5.6] 章节预览: {}...", preview)
+
+            # 记录调试信息
+            if self.debug_mode:
+                self.debug_record.add_writing_chapter(
+                    index=state.current_chunk_index + 1,
+                    chunk=chunk,
+                    nodes=chunk_nodes,
+                    prompt_context=prompt_context,
+                    generated_text=chapter_text
+                )
 
             context.add_draft(chunk.id, chapter_text)
             state.drafts = context.drafts
@@ -103,15 +192,30 @@ class ManuscriptPipeline:
         state.save(state_path)
 
         chunks_dict = {c.id: c for c in chunks}
-        debug("pipeline", "[6.1] 润色参数: drafts_count={} chunks_count={}",
-              len(context.drafts), len(chunks_dict))
+
+        full_draft = context.full_draft()
+
+        if self.debug_mode:
+            self.debug_record.data["polish_input"] = {
+                "drafts_count": len(context.drafts),
+                "full_draft_length": len(full_draft),
+                "full_draft": full_draft,
+                "chunks_for_reference": {
+                    cid: {
+                        "chapter": c.chapter,
+                        "text_length": len(c.text),
+                        "text": c.text
+                    }
+                    for cid, c in chunks_dict.items()
+                }
+            }
 
         polished = await self.polisher.polish(context.drafts, chunks_dict)
 
         debug("pipeline", "[6.2] 润色完成: {} 字", len(polished))
-        if self.debug_mode and polished:
-            preview = polished[:200].replace('\n', ' ')
-            debug("pipeline", "[6.3] 润色预览: {}...", preview)
+
+        if self.debug_mode:
+            self.debug_record.add_polish(full_draft, polished)
 
         # 7. 保存最终稿
         safe = re.sub(r'[<>:"/\\|?*]', '_', book.title)
@@ -123,6 +227,13 @@ class ManuscriptPipeline:
 
         state.phase = WritingPhase.DONE
         state.save(state_path)
+
+        # 保存调试记录
+        if self.debug_mode:
+            self.debug_record.add_result(polished, len(chunks), len(chunks))
+            debug_path = out_dir / "debug_record.json"
+            self.debug_record.save(debug_path)
+            debug("pipeline", "[DEBUG] 调试记录已保存到: {}", debug_path)
 
         return ManuscriptResult(
             title=book.title,
@@ -154,4 +265,5 @@ class ManuscriptPipeline:
     async def _phase_prepare(self, nodes: list[NarrativeNode]) -> None:
         """[PREPARE] 阶段：加载所有 nodes 建立全局理解"""
         debug("pipeline", "[PREPARE] 收到 {} 个节点", len(nodes))
-        # 后续扩展：LLM 分析节点生成全局摘要
+        if self.debug_mode and self.debug_record:
+            self.debug_record.add_prepare(nodes)
