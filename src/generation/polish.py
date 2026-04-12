@@ -93,31 +93,18 @@ class PolishAgent:
 
 请先通读全文 → 按需调用get_chunk_context核对原文 → 逐章润色 → 输出最终稿。"""
 
-        # 4. 运行 Agent - 使用新的 stream API
+        # 4. 运行 Agent - 直接invoke让它自动处理tool calling
         inputs = {"messages": [{"role": "user", "content": user_input}]}
 
         if self.debug_mode:
-            debug("polish", "[POLISH] 开始流式调用...")
+            debug("polish", "[POLISH] 开始调用 agent...")
 
-        output_parts: List[str] = []
-        full_messages = inputs["messages"].copy()
-
-        # 流式执行直到完成
-        max_iterations = 12
-        iteration = 0
-        for iteration in range(max_iterations):
-            if self.debug_mode:
-                debug("polish", "[POLISH] iteration {}", iteration + 1)
-
-            result = agent.invoke(inputs, stream_mode="updates")
-            # result is a generator in stream mode
-            break
-        else:
-            debug("polish", "[POLISH] 达到最大迭代次数")
-
-        # 使用 invoke 获取完整结果
+        # 直接调用，create_agent 会自动处理 tool calling 循环
         result = agent.invoke(inputs)
         messages = result.get("messages", [])
+
+        if self.debug_mode:
+            debug("polish", "[POLISH] agent 执行完成，messages 数量: {}", len(messages))
 
         # 从最后一条 AIMessage 获取输出
         output = ""
@@ -142,7 +129,7 @@ class PolishAgent:
         parts = []
         for i, d in enumerate(drafts, 1):
             c = chunks.get(d.chunk_id)
-            title = c.chapter if c else d.chunk_id
+            title = c.chapter if c and c.chapter else d.chunk_id
             parts.append(f"- 第{i}章：{title}")
         return "\n".join(parts)
 
