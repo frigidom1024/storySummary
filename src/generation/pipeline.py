@@ -84,9 +84,13 @@ class DebugRecord:
 class ManuscriptPipeline:
     """口播稿生成 Pipeline"""
 
-    def __init__(self, output_dir: str = "output", debug_mode: bool = False):
+    def __init__(self, output_dir: str = "output", debug_mode: bool = False,
+                 style_key: str = None, custom_rules: str = None, reference_script: str = None):
         self.output_dir = output_dir
         self.debug_mode = debug_mode
+        self.style_key = style_key
+        self.custom_rules = custom_rules
+        self.reference_script = reference_script
         self.db = Database()
         self.json_storage = JsonStorage()
         self.writer = ChapterWriter(debug_mode=debug_mode)
@@ -166,6 +170,9 @@ class ManuscriptPipeline:
                 chunk=chunk,
                 nodes=chunk_nodes,
                 context_summary=prompt_context,
+                style_key=self.style_key,
+                custom_rules=self.custom_rules,
+                reference_script=self.reference_script,
             )
 
             debug("pipeline", "[5.5] 生成章节长度: {} 字", len(chapter_text))

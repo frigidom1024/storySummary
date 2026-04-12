@@ -5,7 +5,7 @@ import sys
 import uuid
 import tempfile
 import asyncio
-from src.api.schemas.book import BookCreate, BookResponse, NodesResponse, SaveNodesRequest
+from src.api.schemas.book import BookCreate, BookResponse, NodesResponse, SaveNodesRequest, ManuscriptRequest, ManuscriptResponse
 from src.api.schemas.user import UserResponse
 from src.api.deps import get_book_service, get_node_service, get_user_service, get_current_user_id
 from src.api.websocket import manager
@@ -327,3 +327,42 @@ def save_nodes(
     book_service.update_book_status(book_id, "completed")
 
     return {"message": "Nodes saved", "book_id": book_id}
+
+
+@router.post("/{book_id}/manuscript", response_model=ManuscriptResponse)
+async def generate_manuscript(
+    book_id: str,
+    request: Optional[ManuscriptRequest] = None,
+    user_id: str = Depends(get_current_user_id),
+    book_service: BookService = Depends(get_book_service)
+):
+    """生成口播稿，支持自定义风格和参考稿"""
+    from src.generation.pipeline import ManuscriptPipeline
+
+    book = book_service.get_book(book_id)
+    if not book:
+        raise NotFoundError("书籍")
+    if book.user_id != user_id:
+        raise AuthorizationError("无权访问此书籍")
+
+    # 提取参数
+    style_key = request.style_key if request else None
+    custom_rules = request.custom_rules if request else None
+    reference_script = request.reference_script if request else None
+
+    # 启动生成
+    pipeline = ManuscriptPipeline(
+        style_key=style_key,
+        custom_rules=custom_rules,
+        reference_script=reference_script,
+    )
+    result = await pipeline.run(book_id)
+
+    return ManuscriptResponse(
+        book_id=book_id,
+        title=result.title,
+        phase=result.phase,
+        chapters_written=result.chapters_written,
+        total_chunks=result.total_chunks,
+        manuscript=result.full_manuscript,
+    )
