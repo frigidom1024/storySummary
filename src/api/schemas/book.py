@@ -11,6 +11,9 @@ class BookResponse(BaseModel):
     id: str
     user_id: str
     title: str
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    cover_url: Optional[str] = None
     status: str
     nodes_file_path: str
     created_at: datetime

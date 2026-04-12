@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 from src.api.routers import auth, users, books
 
 app = FastAPI(
@@ -21,6 +23,11 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(books.router, prefix="/api")
+
+# 确保封面目录存在
+os.makedirs("data/covers", exist_ok=True)
+# 封面静态文件路由
+app.mount("/api/covers", StaticFiles(directory="data/covers"), name="covers")
 
 
 @app.get("/")

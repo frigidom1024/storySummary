@@ -7,6 +7,9 @@ class Book(BaseModel):
     id: str
     user_id: str
     title: str
+    author: str | None = None
+    publisher: str | None = None
+    cover_url: str | None = None
     nodes_file_path: str
     status: str = "pending"  # pending | processing | completed | failed
     is_deleted: bool = False

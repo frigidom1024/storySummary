@@ -40,6 +40,13 @@ class Database:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_books_user ON books(user_id)")
 
+            # 迁移：添加新列（幂等）
+            for col, dtype in [("author", "TEXT"), ("publisher", "TEXT"), ("cover_url", "TEXT")]:
+                try:
+                    conn.execute(f"ALTER TABLE books ADD COLUMN {col} {dtype}")
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
+
             # 迁移：确保 nodes_file_path 列存在
             try:
                 conn.execute("ALTER TABLE books ADD COLUMN nodes_file_path TEXT NOT NULL DEFAULT ''")
@@ -103,25 +110,26 @@ class Database:
         """创建书籍"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                """INSERT INTO books (id, user_id, title, nodes_file_path, status, is_deleted, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (book.id, book.user_id, book.title, book.nodes_file_path,
-                 book.status, int(book.is_deleted), book.created_at)
+                """INSERT INTO books (id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (book.id, book.user_id, book.title, book.author, book.publisher,
+                 book.cover_url, book.nodes_file_path, book.status, int(book.is_deleted), book.created_at)
             )
 
     def get_book(self, book_id: str) -> Optional[Book]:
         """获取书籍"""
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
-                """SELECT id, user_id, title, nodes_file_path, status, is_deleted, created_at
+                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at
                    FROM books WHERE id = ? AND is_deleted = 0""",
                 (book_id,)
             ).fetchone()
             if row:
                 return Book(
                     id=row[0], user_id=row[1], title=row[2],
-                    nodes_file_path=row[3], status=row[4],
-                    is_deleted=bool(row[5]), created_at=row[6]
+                    author=row[3], publisher=row[4], cover_url=row[5],
+                    nodes_file_path=row[6], status=row[7],
+                    is_deleted=bool(row[8]), created_at=row[9]
                 )
             return None
 
@@ -129,15 +137,16 @@ class Database:
         """获取用户的所有书籍"""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
-                """SELECT id, user_id, title, nodes_file_path, status, is_deleted, created_at
+                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at
                    FROM books WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC""",
                 (user_id,)
             ).fetchall()
             return [
                 Book(
                     id=r[0], user_id=r[1], title=r[2],
-                    nodes_file_path=r[3], status=r[4],
-                    is_deleted=bool(r[5]), created_at=r[6]
+                    author=r[3], publisher=r[4], cover_url=r[5],
+                    nodes_file_path=r[6], status=r[7],
+                    is_deleted=bool(r[8]), created_at=r[9]
                 )
                 for r in rows
             ]

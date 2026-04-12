@@ -45,3 +45,20 @@ class BookService(IBookService):
     def delete_book(self, book_id: str) -> None:
         """软删除书籍"""
         self.db.soft_delete_book(book_id)
+
+    def create_book_object(self, user_id: str, title: str, author: str | None, publisher: str | None, cover_url: str | None, nodes_file_path: str) -> Book:
+        """创建书籍（带完整字段）"""
+        book = Book(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=title,
+            author=author,
+            publisher=publisher,
+            cover_url=cover_url,
+            nodes_file_path=nodes_file_path,
+            status="pending",
+            is_deleted=False,
+            created_at=datetime.now()
+        )
+        self.db.create_book(book)
+        return book
