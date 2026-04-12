@@ -86,7 +86,16 @@ class Analyzer:
                 debug("node_generator", "book_id={} chunk={} generated {} nodes", book_id, i, len(nodes))
             except Exception as e:
                 debug("node_generator", "book_id={} chunk={} error={}", book_id, i, str(e))
-                nodes = []
+                error_msg = f"第 {i+1} 章分析失败: {str(e)}"
+                await report(80, f"错误: {error_msg}")
+                self.db.update_book_status(book_id, "failed")
+                return {
+                    "nodes": all_nodes,
+                    "structure": None,
+                    "total_chunks": total_chunks,
+                    "total_nodes": len(all_nodes),
+                    "error": error_msg
+                }
 
             # Link nodes
             prev_node = all_nodes[-1] if all_nodes else None
@@ -103,6 +112,19 @@ class Analyzer:
             await asyncio.sleep(0.05)  # Small delay for UI update
 
         debug("analyzer", "book_id={} node generation complete, total_nodes={}", book_id, len(all_nodes))
+
+        if not all_nodes:
+            error_msg = "所有章节分析失败，未能生成任何节点"
+            await report(80, f"错误: {error_msg}")
+            self.db.update_book_status(book_id, "failed")
+            return {
+                "nodes": [],
+                "structure": None,
+                "total_chunks": total_chunks,
+                "total_nodes": 0,
+                "error": error_msg
+            }
+
         await report(80, "节点生成完成，正在构建结构...")
 
         # Build structure
