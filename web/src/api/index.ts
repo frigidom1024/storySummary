@@ -10,6 +10,7 @@ export interface Book {
   publisher?: string
   cover_url?: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
+  message?: string  // 错误消息或状态消息
   nodes_file_path: string
   created_at: string
 }

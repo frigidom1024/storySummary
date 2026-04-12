@@ -55,6 +55,16 @@
         </button>
       </div>
 
+      <!-- 错误提示（实时分析错误） -->
+      <div v-if="analyzeError" class="error-message">
+        {{ analyzeError }}
+      </div>
+
+      <!-- 错误提示（已保存的错误消息） -->
+      <div v-if="book.status === 'failed' && book.message && !analyzeError" class="error-message">
+        {{ book.message }}
+      </div>
+
       <!-- 解析进度 -->
       <div v-if="analyzing || wsProgress" class="progress-section">
         <div class="progress-bar">
@@ -108,6 +118,7 @@ const filter = ref<NodeFilter>({
 
 const analyzing = ref(false)
 const wsProgress = ref<{ progress: number; message: string; status: string } | null>(null)
+const analyzeError = ref<string | null>(null)
 let ws: WebSocket | null = null
 
 const book = computed(() => store.currentBook)
@@ -173,18 +184,24 @@ function goBack() {
 async function startAnalyze() {
   if (!book.value) return
 
+  analyzeError.value = null
   analyzing.value = true
   wsProgress.value = { progress: 0, message: '准备启动...', status: 'processing' }
 
+  // 先连接 WebSocket，确保能接收进度消息
+  connectWebSocket()
+
   // 启动分析
   try {
-    await booksApi.analyzeBook(book.value.id)
-  } catch (e) {
+    console.log('Calling analyzeBook API with bookId:', book.value.id)
+    const response = await booksApi.analyzeBook(book.value.id)
+    console.log('analyzeBook API response:', response)
+  } catch (e: any) {
     console.error('Failed to start analysis:', e)
+    analyzeError.value = e.response?.data?.message || e.message || '启动分析失败'
+    analyzing.value = false
+    disconnectWebSocket()
   }
-
-  // 连接 WebSocket
-  connectWebSocket()
 }
 
 function connectWebSocket() {
@@ -213,12 +230,19 @@ function connectWebSocket() {
     }
   }
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
+    console.log('WebSocket closed', event.code, event.reason)
     ws = null
+    // 如果 WebSocket 关闭但还在分析中，说明连接断了
+    if (analyzing.value && !wsProgress.value?.status) {
+      analyzeError.value = 'WebSocket 连接断开，请重试'
+      analyzing.value = false
+    }
   }
 
   ws.onerror = (e) => {
     console.error('WebSocket error:', e)
+    analyzeError.value = 'WebSocket 连接错误，请重试'
     analyzing.value = false
   }
 }
@@ -277,6 +301,16 @@ onUnmounted(() => {
 
 .error-state {
   color: var(--color-error);
+}
+
+.error-message {
+  padding: 12px 16px;
+  background: rgba(234, 67, 53, 0.1);
+  border: 1px solid rgba(234, 67, 53, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-bottom: 16px;
 }
 
 .spinner {
