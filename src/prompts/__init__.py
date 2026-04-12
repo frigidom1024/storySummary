@@ -3,6 +3,9 @@
 # 导入子模块以触发注册
 from . import writing
 from . import polish
+from . import node
+from . import detail
+from . import planning
 
 # 从 registry 导出
 from .registry import (
@@ -26,6 +29,15 @@ from .polish import (
     build_polish_user_input,
 )
 
+from .node import MULTI_BEAT_NODE_PROMPT
+
+from .detail import (
+    DETAIL_RECOVERY_PROMPT,
+    PODCAST_GENERATION_PROMPT,
+)
+
+from .planning import PLANNING_PROMPT
+
 __all__ = [
     # Registry
     "PromptRegistry",
@@ -41,4 +53,11 @@ __all__ = [
     "POLISH_SYSTEM",
     "POLISH_USER_TEMPLATE",
     "build_polish_user_input",
+    # Node
+    "MULTI_BEAT_NODE_PROMPT",
+    # Detail
+    "DETAIL_RECOVERY_PROMPT",
+    "PODCAST_GENERATION_PROMPT",
+    # Planning
+    "PLANNING_PROMPT",
 ]

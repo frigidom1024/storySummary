@@ -1,7 +1,7 @@
 import os
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from src.core.prompts import DETAIL_RECOVERY_PROMPT
+from src.prompts import DETAIL_RECOVERY_PROMPT
 from src.core.node_generator import create_llm
 
 

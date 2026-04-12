@@ -9,7 +9,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
-from src.core.prompts import MULTI_BEAT_NODE_PROMPT
+from src.prompts import MULTI_BEAT_NODE_PROMPT
 from src.core.tools.node_query_tools import get_previous_chunk_nodes, get_thread_last_node, search_nodes
 from src.core.tools.tool_executor import TOOL_REGISTRY
 from langchain_core.messages import ToolMessage
