@@ -1,0 +1,35 @@
+{
+  "book_title": "测试局外人E2E_ff16fb9e",
+  "phase": "done",
+  "current_chunk_index": 2,
+  "outline": {
+    "chapters": [
+      {
+        "chunk_id": "chunk-0001",
+        "title": "开场",
+        "summary": "默尔索母亲去世"
+      },
+      {
+        "chunk_id": "chunk-0002",
+        "title": "周六",
+        "summary": "默尔索的日常"
+      }
+    ],
+    "overall_tone": "疏离冷漠",
+    "core_themes": [
+      "存在主义",
+      "社会规则"
+    ]
+  },
+  "written_chapters": [
+    {
+      "chunk_id": "chunk-0001",
+      "manuscript": "这是第一章的播客稿..."
+    },
+    {
+      "chunk_id": "chunk-0002",
+      "manuscript": "这是第二章的播客稿..."
+    }
+  ],
+  "established_claims": []
+}

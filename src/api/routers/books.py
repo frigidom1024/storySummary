@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from typing import List, Optional
 import os
+import sys
 import uuid
 import tempfile
 import asyncio
@@ -104,14 +105,18 @@ async def upload_book(
     book_id = str(uuid.uuid4())
     nodes_file_path = f"data/books/{book_id}"
 
+    print(f"[upload] Generated book_id={book_id} ext={ext}", file=sys.stderr, flush=True)
+
     # 保存文件
     file_manager.save_book_file(book_id, file_bytes, ext)
+    print(f"[upload] File saved: data/{book_id}.{ext} exists={os.path.exists(f'data/{book_id}.{ext}')}", file=sys.stderr, flush=True)
 
     # 保存封面
     cover_url = file_manager.save_cover(book_id, cover_image, cover_extension) if cover_image else None
 
     # 创建书籍记录
     new_book = book_service.create_book_object(
+        book_id=book_id,
         user_id=user_id,
         title=book_title,
         author=book_author,

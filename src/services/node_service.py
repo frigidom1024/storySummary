@@ -11,7 +11,7 @@ class NodeService(INodeService):
         self.db = db
         self.json_storage = json_storage
 
-    def save_nodes(self, book_id: str, nodes: List[NarrativeNode], structure: StoryStructure) -> None:
+    def save_nodes(self, book_id: str, nodes: List[NarrativeNode], structure: StoryStructure = None) -> None:
         """保存节点到 JSON 文件"""
         book = self.db.get_book(book_id)
         if not book:
@@ -20,9 +20,10 @@ class NodeService(INodeService):
         data = {
             "book_id": book_id,
             "nodes": [node.model_dump() for node in nodes],
-            "structure": structure.model_dump()
+            "structure": structure.model_dump() if structure else None
         }
-        self.json_storage.write(book.nodes_file_path, data)
+        nodes_file = f"{book.nodes_file_path}/nodes.json"
+        self.json_storage.write(nodes_file, data)
 
     def get_nodes(self, book_id: str) -> List[NarrativeNode]:
         """获取书籍所有节点"""
@@ -31,11 +32,18 @@ class NodeService(INodeService):
             raise ValueError(f"Book not found: {book_id}")
 
         try:
-            data = self.json_storage.read(book.nodes_file_path)
+            nodes_file = f"{book.nodes_file_path}/nodes.json"
+            data = self.json_storage.read(nodes_file)
         except FileNotFoundError:
             return []
 
-        return [NarrativeNode.model_validate(n) for n in data.get("nodes", [])]
+        # 支持两种格式：列表或 {"nodes": [...]} 字典
+        if isinstance(data, list):
+            nodes_list = data
+        else:
+            nodes_list = data.get("nodes", []) if isinstance(data, dict) else []
+
+        return [NarrativeNode.model_validate(n) for n in nodes_list]
 
     def get_node(self, book_id: str, node_id: str) -> Optional[NarrativeNode]:
         """获取单个节点"""
@@ -52,8 +60,12 @@ class NodeService(INodeService):
             raise ValueError(f"Book not found: {book_id}")
 
         try:
-            data = self.json_storage.read(book.nodes_file_path)
+            structure_file = f"{book.nodes_file_path}/structure.json"
+            data = self.json_storage.read(structure_file)
         except FileNotFoundError:
+            return None
+
+        if not isinstance(data, dict):
             return None
 
         if "structure" in data:

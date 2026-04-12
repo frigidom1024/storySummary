@@ -34,9 +34,9 @@ class BookService(IBookService):
     def get_books_for_user(self, user_id: str) -> List[Book]:
         return self.db.get_books_for_user(user_id)
 
-    def update_book_status(self, book_id: str, status: str) -> Book:
-        """更新书籍状态"""
-        self.db.update_book_status(book_id, status)
+    def update_book_status(self, book_id: str, status: str, message: str = None) -> Book:
+        """更新书籍状态和消息"""
+        self.db.update_book_status(book_id, status, message)
         book = self.db.get_book(book_id)
         if not book:
             raise ValueError(f"Book not found: {book_id}")
@@ -46,10 +46,10 @@ class BookService(IBookService):
         """软删除书籍"""
         self.db.soft_delete_book(book_id)
 
-    def create_book_object(self, user_id: str, title: str, author: str | None, publisher: str | None, cover_url: str | None, nodes_file_path: str) -> Book:
+    def create_book_object(self, book_id: str, user_id: str, title: str, author: str | None, publisher: str | None, cover_url: str | None, nodes_file_path: str) -> Book:
         """创建书籍（带完整字段）"""
         book = Book(
-            id=str(uuid.uuid4()),
+            id=book_id,
             user_id=user_id,
             title=title,
             author=author,

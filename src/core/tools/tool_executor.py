@@ -1,20 +1,21 @@
-"""Tool implementations — SQLite queries via existing storage layer."""
+"""Tool implementations — read from JSON files."""
 
-import tempfile
 import os
-from src.storage.database import Database
+from src.storage.json_storage import JsonStorage
+
+json_storage = JsonStorage()
 
 
-def get_previous_chunk_nodes_impl(book_id: str, db_path: str | None = None, **kwargs) -> list[dict]:
-    """Get all nodes from the previous chunk (T1 implementation).
+def get_previous_chunk_nodes_impl(book_id: str, **kwargs) -> list[dict]:
+    """Get all nodes from the previous chunk (T1 implementation)."""
+    chunks_file = f"data/books/{book_id}/chunks.json"
+    nodes_file = f"data/books/{book_id}/nodes.json"
 
-    Queries the database for the highest-order chunk less than the current one,
-    then returns all nodes in that chunk.
-    """
-    if db_path is None:
-        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
-    db = Database(db_path)
-    chunks = db.get_chunks_for_book(book_id)
+    try:
+        chunks = json_storage.read(chunks_file) or []
+    except Exception:
+        return []
+
     if not chunks:
         return []
 
@@ -23,68 +24,92 @@ def get_previous_chunk_nodes_impl(book_id: str, db_path: str | None = None, **kw
     if not last_chunk_id:
         return []
 
-    nodes = db.get_nodes_for_book(book_id)
+    try:
+        nodes_data = json_storage.read(nodes_file) or []
+    except Exception:
+        return []
+
+    # Handle both list format and dict format
+    if isinstance(nodes_data, dict):
+        nodes_list = nodes_data.get("nodes", [])
+    else:
+        nodes_list = nodes_data
+
     prev_nodes = [
         {
-            "id": n.id,
-            "timeline_anchor": n.timeline_anchor,
-            "thread_id": n.thread_id,
-            "characters": [c.name for c in n.characters],
-            "narrative_role": n.narrative_role,
+            "id": n.get("id", ""),
+            "timeline_anchor": n.get("timeline_anchor", ""),
+            "thread_id": n.get("thread_id", ""),
+            "characters": [c.get("name", "") for c in n.get("characters", []) if c.get("name")],
+            "narrative_role": n.get("narrative_role", ""),
         }
-        for n in nodes
-        if n.parent_chunk_id == last_chunk_id
+        for n in nodes_list
+        if n.get("parent_chunk_id") == last_chunk_id
     ]
     return prev_nodes
 
 
-def get_thread_last_node_impl(book_id: str, thread_id: str, db_path: str | None = None, **kwargs) -> dict | None:
-    """Get the last node in a thread chain (T2 implementation).
+def get_thread_last_node_impl(book_id: str, thread_id: str, **kwargs) -> dict | None:
+    """Get the last node in a thread chain (T2 implementation)."""
+    nodes_file = f"data/books/{book_id}/nodes.json"
 
-    Finds the node in the given thread that has no incoming thread_next_node_id.
-    """
-    if db_path is None:
-        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
-    db = Database(db_path)
-    nodes = db.get_nodes_for_book(book_id)
+    try:
+        nodes_data = json_storage.read(nodes_file) or []
+    except Exception:
+        return None
 
-    thread_nodes = [n for n in nodes if n.thread_id == thread_id]
+    # Handle both list format and dict format
+    if isinstance(nodes_data, dict):
+        nodes_list = nodes_data.get("nodes", [])
+    else:
+        nodes_list = nodes_data
+
+    thread_nodes = [n for n in nodes_list if n.get("thread_id") == thread_id]
     if not thread_nodes:
         return None
 
     tails = set()
-    all_next_ids = {n.thread_next_node_id for n in thread_nodes if n.thread_next_node_id}
+    all_next_ids = {n.get("thread_next_node_id") for n in thread_nodes if n.get("thread_next_node_id")}
 
     for n in thread_nodes:
-        if n.id not in all_next_ids:
-            tails.add(n.id)
+        if n.get("id") not in all_next_ids:
+            tails.add(n.get("id"))
 
     if not tails:
         return None
 
-    tail_node = max(thread_nodes, key=lambda n: n.beat_index)
+    tail_node = max(thread_nodes, key=lambda n: n.get("beat_index", 0))
     return {
-        "id": tail_node.id,
-        "timeline_anchor": tail_node.timeline_anchor,
-        "beat_index": tail_node.beat_index,
+        "id": tail_node.get("id", ""),
+        "timeline_anchor": tail_node.get("timeline_anchor", ""),
+        "beat_index": tail_node.get("beat_index", 0),
     }
 
 
-def search_nodes_impl(book_id: str, keyword: str, db_path: str | None = None, **kwargs) -> list[dict]:
+def search_nodes_impl(book_id: str, keyword: str, **kwargs) -> list[dict]:
     """Search nodes by character name (T3 implementation)."""
-    if db_path is None:
-        db_path = os.path.join(tempfile.gettempdir(), "story_summary_tool_test.db")
-    db = Database(db_path)
-    nodes = db.get_nodes_for_book(book_id)
+    nodes_file = f"data/books/{book_id}/nodes.json"
+
+    try:
+        nodes_data = json_storage.read(nodes_file) or []
+    except Exception:
+        return []
+
+    # Handle both list format and dict format
+    if isinstance(nodes_data, dict):
+        nodes_list = nodes_data.get("nodes", [])
+    else:
+        nodes_list = nodes_data
 
     results = []
-    for n in nodes:
-        char_names = [c.name for c in n.characters]
+    for n in nodes_list:
+        characters = n.get("characters", [])
+        char_names = [c.get("name", "") for c in characters if c.get("name")]
         if any(keyword in name for name in char_names):
             results.append({
-                "id": n.id,
-                "thread_id": n.thread_id,
-                "scene": n.scene[:50] if n.scene else "",
+                "id": n.get("id", ""),
+                "thread_id": n.get("thread_id", ""),
+                "scene": (n.get("scene", "") or "")[:50],
                 "characters": char_names,
             })
     return results
