@@ -55,9 +55,7 @@ const statusText = computed(() => {
 })
 
 function onClick() {
-  if (props.book.status === 'completed') {
-    router.push(`/books/${props.book.id}`)
-  }
+  router.push(`/books/${props.book.id}`)
 }
 
 function formatDate(dateStr: string): string {

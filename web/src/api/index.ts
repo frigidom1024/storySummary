@@ -167,6 +167,9 @@ export const booksApi = {
   saveBookNodes: (bookId: string, nodes: NarrativeNode[], structure?: StoryStructure) =>
     api.post(`/books/${bookId}/nodes`, { nodes, structure }),
 
+  analyzeBook: (bookId: string) =>
+    api.post(`/books/${bookId}/analyze`),
+
   uploadBook: (file: File, meta?: { title?: string; author?: string; publisher?: string }) => {
     const formData = new FormData()
     formData.append('file', file)
