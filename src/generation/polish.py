@@ -1,10 +1,8 @@
 import os
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Any, TYPE_CHECKING
 from langchain_core.tools import tool
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.messages import SystemMessage
+from langchain.agents import create_agent
 from src.core.node_generator import create_llm
 from src.logging_config import debug
 
@@ -70,24 +68,14 @@ class PolishAgent:
         get_chunk_tool = create_chunk_tool(chunks)
         tools = [get_chunk_tool]
 
-        # 2. 构建 ReAct 提示词
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", POLISH_SYSTEM_PROMPT),
-            ("user", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-
-        # 3. 创建 Agent
-        agent = create_react_agent(self.llm, tools, prompt)
-        executor = AgentExecutor(
-            agent=agent,
+        # 2. 使用新的 create_agent API
+        agent = create_agent(
+            model=self.llm,
             tools=tools,
-            max_iterations=12,
-            verbose=self.debug_mode,
-            handle_parsing_errors="continue"
+            system_prompt=POLISH_SYSTEM_PROMPT,
         )
 
-        # 4. 构建输入
+        # 3. 构建输入
         chapters_index = self._build_chapters_index(drafts, chunks)
         chapters_text = self._build_chapters_text(drafts)
 
@@ -95,8 +83,7 @@ class PolishAgent:
             debug("polish", "[POLISH] 章节索引:\n{}", chapters_index)
             debug("polish", "[POLISH] 待润色稿子总长度: {} 字", len(chapters_text))
 
-        user_input = f"""
-请润色以下多章节播客稿：
+        user_input = f"""请润色以下多章节播客稿：
 
 ## 章节索引
 {chapters_index}
@@ -104,13 +91,45 @@ class PolishAgent:
 ## 待润色稿子
 {chapters_text}
 
-请先通读全文 → 按需调用get_chunk_context核对原文 → 逐章润色 → 输出最终稿。
-"""
+请先通读全文 → 按需调用get_chunk_context核对原文 → 逐章润色 → 输出最终稿。"""
 
-        # 5. 运行 Agent
-        result = await executor.ainvoke({"input": user_input})
+        # 4. 运行 Agent - 使用新的 stream API
+        inputs = {"messages": [{"role": "user", "content": user_input}]}
 
-        output = result["output"].strip()
+        if self.debug_mode:
+            debug("polish", "[POLISH] 开始流式调用...")
+
+        output_parts: List[str] = []
+        full_messages = inputs["messages"].copy()
+
+        # 流式执行直到完成
+        max_iterations = 12
+        iteration = 0
+        for iteration in range(max_iterations):
+            if self.debug_mode:
+                debug("polish", "[POLISH] iteration {}", iteration + 1)
+
+            result = agent.invoke(inputs, stream_mode="updates")
+            # result is a generator in stream mode
+            break
+        else:
+            debug("polish", "[POLISH] 达到最大迭代次数")
+
+        # 使用 invoke 获取完整结果
+        result = agent.invoke(inputs)
+        messages = result.get("messages", [])
+
+        # 从最后一条 AIMessage 获取输出
+        output = ""
+        for msg in reversed(messages):
+            if hasattr(msg, 'type') and msg.type == 'ai':
+                output = msg.content
+                break
+            elif isinstance(msg, dict) and msg.get("type") == "ai":
+                output = msg.get("content", "")
+                break
+
+        output = output.strip()
 
         if self.debug_mode:
             debug("polish", "[POLISH] 润色完成: {} 字", len(output))
