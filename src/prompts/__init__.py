@@ -21,6 +21,8 @@ from .writing import (
     CHAPTER_WRITING_SYSTEM,
     CHAPTER_WRITING_USER_TEMPLATE,
     build_writing_prompt,
+    build_style_system_prompt,
+    STYLE_TEMPLATES,
 )
 
 from .polish import (
@@ -49,6 +51,8 @@ __all__ = [
     "CHAPTER_WRITING_SYSTEM",
     "CHAPTER_WRITING_USER_TEMPLATE",
     "build_writing_prompt",
+    "build_style_system_prompt",
+    "STYLE_TEMPLATES",
     # Polish
     "POLISH_SYSTEM",
     "POLISH_USER_TEMPLATE",

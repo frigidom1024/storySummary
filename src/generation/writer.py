@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
@@ -21,6 +22,9 @@ class ChapterWriter:
         chunk: Chunk,
         nodes: list[NarrativeNode],
         context_summary: str,
+        style_key: Optional[str] = None,
+        custom_rules: Optional[str] = None,
+        reference_script: Optional[str] = None,
     ) -> str:
         """
         生成单章播客稿
@@ -35,6 +39,9 @@ class ChapterWriter:
             established_claims=context_summary or "（无）",
             nodes_summary=nodes_summary,
             chunk_text=chunk.text,
+            style_key=style_key,
+            custom_rules=custom_rules,
+            reference_script=reference_script,
         )
 
         if self.debug_mode:
