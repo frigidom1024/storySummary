@@ -5,7 +5,7 @@ from src.models.book import Book
 
 
 class Database:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str = "data/story_summary.db"):
         self.db_path = db_path
         self._init_db()
 
@@ -31,27 +31,18 @@ class Database:
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
-                    nodes_file_path TEXT NOT NULL,
+                    author TEXT,
+                    publisher TEXT,
+                    cover_url TEXT,
+                    nodes_file_path TEXT NOT NULL DEFAULT '',
                     status TEXT DEFAULT 'pending',
+                    message TEXT DEFAULT '',
                     is_deleted INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_books_user ON books(user_id)")
-
-            # 迁移：添加新列（幂等）
-            for col, dtype in [("author", "TEXT"), ("publisher", "TEXT"), ("cover_url", "TEXT")]:
-                try:
-                    conn.execute(f"ALTER TABLE books ADD COLUMN {col} {dtype}")
-                except sqlite3.OperationalError:
-                    pass  # 列已存在
-
-            # 迁移：确保 nodes_file_path 列存在
-            try:
-                conn.execute("ALTER TABLE books ADD COLUMN nodes_file_path TEXT NOT NULL DEFAULT ''")
-            except sqlite3.OperationalError:
-                pass  # 列已存在
 
     # === Users ===
 
@@ -110,17 +101,17 @@ class Database:
         """创建书籍"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                """INSERT INTO books (id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO books (id, user_id, title, author, publisher, cover_url, nodes_file_path, status, message, is_deleted, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (book.id, book.user_id, book.title, book.author, book.publisher,
-                 book.cover_url, book.nodes_file_path, book.status, int(book.is_deleted), book.created_at)
+                 book.cover_url, book.nodes_file_path, book.status, book.message, int(book.is_deleted), book.created_at)
             )
 
     def get_book(self, book_id: str) -> Optional[Book]:
         """获取书籍"""
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
-                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at
+                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, message, is_deleted, created_at
                    FROM books WHERE id = ? AND is_deleted = 0""",
                 (book_id,)
             ).fetchone()
@@ -128,8 +119,8 @@ class Database:
                 return Book(
                     id=row[0], user_id=row[1], title=row[2],
                     author=row[3], publisher=row[4], cover_url=row[5],
-                    nodes_file_path=row[6], status=row[7],
-                    is_deleted=bool(row[8]), created_at=row[9]
+                    nodes_file_path=row[6], status=row[7], message=row[8],
+                    is_deleted=bool(row[9]), created_at=row[10]
                 )
             return None
 
@@ -137,7 +128,7 @@ class Database:
         """获取用户的所有书籍"""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
-                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, is_deleted, created_at
+                """SELECT id, user_id, title, author, publisher, cover_url, nodes_file_path, status, message, is_deleted, created_at
                    FROM books WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC""",
                 (user_id,)
             ).fetchall()
@@ -145,19 +136,25 @@ class Database:
                 Book(
                     id=r[0], user_id=r[1], title=r[2],
                     author=r[3], publisher=r[4], cover_url=r[5],
-                    nodes_file_path=r[6], status=r[7],
-                    is_deleted=bool(r[8]), created_at=r[9]
+                    nodes_file_path=r[6], status=r[7], message=r[8],
+                    is_deleted=bool(r[9]), created_at=r[10]
                 )
                 for r in rows
             ]
 
-    def update_book_status(self, book_id: str, status: str) -> None:
-        """更新书籍状态"""
+    def update_book_status(self, book_id: str, status: str, message: str = None) -> None:
+        """更新书籍状态和消息"""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "UPDATE books SET status = ? WHERE id = ?",
-                (status, book_id)
-            )
+            if message is not None:
+                conn.execute(
+                    "UPDATE books SET status = ?, message = ? WHERE id = ?",
+                    (status, message, book_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE books SET status = ? WHERE id = ?",
+                    (status, book_id)
+                )
 
     def soft_delete_book(self, book_id: str) -> None:
         """软删除书籍"""
