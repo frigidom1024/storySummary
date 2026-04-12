@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from src.models.user import User
 from src.models.book import Book
-from src.models.narrative_node import NarrativeNode, StoryStructure
+from src.models.narrative_node import NarrativeNode
+from src.models.story_structure import StoryStructure
 
 
 class IUserService(ABC):

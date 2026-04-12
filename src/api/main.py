@@ -18,9 +18,9 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(books.router)
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(books.router, prefix="/api")
 
 
 @app.get("/")

@@ -1,5 +1,6 @@
 from typing import List, Optional
-from src.models.narrative_node import NarrativeNode, StoryStructure
+from src.models.narrative_node import NarrativeNode
+from src.models.story_structure import StoryStructure
 from src.services.interfaces import INodeService
 from src.storage.database import Database
 from src.storage.json_storage import JsonStorage

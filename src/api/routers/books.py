@@ -5,7 +5,8 @@ from src.api.schemas.user import UserResponse
 from src.api.deps import get_book_service, get_node_service, get_user_service, get_current_user_id
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
-from src.models.narrative_node import NarrativeNode, StoryStructure
+from src.models.narrative_node import NarrativeNode
+from src.models.story_structure import StoryStructure
 
 router = APIRouter(prefix="/books", tags=["books"])
 

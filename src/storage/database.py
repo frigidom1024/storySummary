@@ -40,6 +40,12 @@ class Database:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_books_user ON books(user_id)")
 
+            # 迁移：确保 nodes_file_path 列存在
+            try:
+                conn.execute("ALTER TABLE books ADD COLUMN nodes_file_path TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # 列已存在
+
     # === Users ===
 
     def create_user(self, user: User) -> None:
