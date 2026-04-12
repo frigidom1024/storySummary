@@ -5,33 +5,11 @@ from langchain_core.tools import tool
 from langchain.agents import create_agent
 from src.core.node_generator import create_llm
 from src.logging_config import debug
+from src.prompts import POLISH_SYSTEM, build_polish_user_input
 
 if TYPE_CHECKING:
     from src.models.chunk import Chunk
     from src.generation.models import ChapterDraft
-
-# ====================== 系统提示词（保持你原来的，我稍微强化了Agent能力）======================
-POLISH_SYSTEM_PROMPT = """
-你是一个专业播客稿编辑，负责对多章节小说解说稿进行逐章高质量润色。
-
-润色规则：
-1. 消除重复内容
-2. 统一口语化语气
-3. 强化章节过渡自然
-4. 结尾升华主题
-5. 加入主播个人思考，不要纯复述
-6. 必须对照原文核实情节
-
-你可以使用工具查看任意章节原文，确保润色准确。
-请一步一步思考，先规划，再调用工具，最后输出完整润色稿。
-
-输出格式必须严格遵守：
-【第X章润色】
-内容
-
-【完整稿子】
-全部合并内容
-"""
 
 # ====================== 工具：获取章节原文（Agent可直接调用）======================
 def create_chunk_tool(chunks: Dict[str, "Chunk"]):
@@ -72,7 +50,7 @@ class PolishAgent:
         agent = create_agent(
             model=self.llm,
             tools=tools,
-            system_prompt=POLISH_SYSTEM_PROMPT,
+            system_prompt=POLISH_SYSTEM,
         )
 
         # 3. 构建输入
@@ -83,15 +61,7 @@ class PolishAgent:
             debug("polish", "[POLISH] 章节索引:\n{}", chapters_index)
             debug("polish", "[POLISH] 待润色稿子总长度: {} 字", len(chapters_text))
 
-        user_input = f"""请润色以下多章节播客稿：
-
-## 章节索引
-{chapters_index}
-
-## 待润色稿子
-{chapters_text}
-
-请先通读全文 → 按需调用get_chunk_context核对原文 → 逐章润色 → 输出最终稿。"""
+        user_input = build_polish_user_input(chapters_index, chapters_text)
 
         # 4. 运行 Agent - 直接invoke让它自动处理tool calling
         inputs = {"messages": [{"role": "user", "content": user_input}]}

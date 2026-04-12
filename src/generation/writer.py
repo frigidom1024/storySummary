@@ -2,7 +2,7 @@ import os
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
-from src.core.prompts import CHAPTER_WRITING_PROMPT
+from src.prompts import build_writing_prompt
 from src.core.node_generator import create_llm
 from src.logging_config import debug
 
@@ -28,7 +28,7 @@ class ChapterWriter:
         """
         nodes_summary = self._format_nodes(nodes)
 
-        prompt = CHAPTER_WRITING_PROMPT.format(
+        prompt_data = build_writing_prompt(
             chapter_title=chunk.chapter or f"第{chunk.order + 1}章",
             chapter_summary=f"约{len(chunk.text)}字",
             core_themes="（待补充）",
@@ -39,13 +39,13 @@ class ChapterWriter:
 
         if self.debug_mode:
             debug("writer", "[WRITE] 生成章节: {}", chunk.chapter or f"第{chunk.order + 1}章")
-            debug("writer", "[WRITE] Prompt 长度: {} 字", len(prompt))
+            debug("writer", "[WRITE] Prompt 长度: {} 字", len(prompt_data["user"]))
             debug("writer", "[WRITE] Context Summary: {}",
                   context_summary[:100] + "..." if len(context_summary) > 100 else context_summary)
 
         messages = [
-            SystemMessage(content="你是一个播客主播，输出纯文本稿子。"),
-            HumanMessage(content=prompt)
+            SystemMessage(content=prompt_data["system"]),
+            HumanMessage(content=prompt_data["user"])
         ]
 
         response = await self.llm.ainvoke(messages)
