@@ -1,7 +1,7 @@
 import logging
 import uuid
 from pathlib import Path
-from src.core.chunker import ChapterChunker
+from src.core.chunker import chunk_by_book_id
 from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
@@ -24,7 +24,6 @@ class NovelToPodcastPipeline:
         self.api_key = api_key
         self.model = model
         self.user_id = user_id or "default-user"
-        self.chunker = ChapterChunker()
         self.node_generator = NarrativeNodeGenerator(api_key=api_key, model=model)
         self.structure_builder = StructureBuilder()
         self.db = Database(db_path)
@@ -49,18 +48,31 @@ class NovelToPodcastPipeline:
 
     async def process_file(self, book_path: str) -> dict:
         """Process a book file (EPUB or PDF) through the pipeline."""
-        from src.utils.book_adapter import read_book
-        reader = read_book(book_path)
-        return await self.process(reader.read(), reader.title)
+        from src.utils.reader import read_book
+        import shutil
 
-    async def process(self, novel_text: str, title: str) -> dict:
+        reader = read_book(book_path)
+
+        # Create book_id and save file to books directory
+        book_id = self._ensure_book(reader.title)
+        book_dir = Path(f"data/books/{book_id}")
+        book_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy file to books directory
+        suffix = Path(book_path).suffix.lower()
+        dest_path = book_dir / f"book{suffix}"
+        shutil.copy2(book_path, dest_path)
+
+        return await self.process(reader.read(), reader.title, book_id=book_id)
+
+    async def process(self, novel_text: str, title: str, book_id: str = None) -> dict:
         self.title = title
-        book_id = self._ensure_book(title)
+        book_id = book_id or self._ensure_book(title)
         logger.info(f"[{title}] Starting pipeline... (book_id={book_id})")
 
         # 1. Chunk the novel
         logger.info(f"[{title}] Chunking novel...")
-        chunks = self.chunker.chunk(novel_text)
+        chunks = chunk_by_book_id(book_id)
         logger.info(f"[{title}] Generated {len(chunks)} chunks")
 
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
@@ -131,19 +143,25 @@ class NovelToPodcastPipeline:
 
     async def process_full(self, book_path: str, user_id: str = None):
         """Run the full pipeline: book → chunks → nodes → podcast manuscript."""
-        from src.utils.book_adapter import read_book
+        from src.utils.reader import read_book
+        import shutil
 
         if user_id:
             self.user_id = user_id
 
         reader = read_book(book_path)
-        text = reader.read()
 
-        # Ensure book exists
+        # Ensure book exists and save file
         book_id = self._ensure_book(reader.title)
+        book_dir = Path(f"data/books/{book_id}")
+        book_dir.mkdir(parents=True, exist_ok=True)
 
-        # Existing: chunk + generate nodes
-        chunks = self.chunker.chunk(text)
+        suffix = Path(book_path).suffix.lower()
+        dest_path = book_dir / f"book{suffix}"
+        shutil.copy2(book_path, dest_path)
+
+        # Chunk using book_id
+        chunks = chunk_by_book_id(book_id)
         all_nodes = []
         for i, chunk in enumerate(chunks):
             chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
