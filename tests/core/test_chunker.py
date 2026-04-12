@@ -24,7 +24,9 @@ class TestTextChunker:
 
 class TestAdaptiveChunker:
     def test_extracts_chapters(self):
-        text = "Chapter 1\n\nContent one.\n\nChapter 2\n\nContent two."
+        # Content must be >= 500 chars (SmartChunker.MIN_CHUNK_CHARS) to be valid
+        text = ("Chapter 1\n\n" + "This is chapter one content. " * 40 + "\n\n" +
+                "Chapter 2\n\n" + "This is chapter two content. " * 40)
         chunker = AdaptiveChunker()
         chunks = chunker.chunk(text)
         assert len(chunks) == 2
@@ -32,7 +34,9 @@ class TestAdaptiveChunker:
         assert chunks[1].chapter == "Chapter 2"
 
     def test_extracts_chapters_with_roman_numerals(self):
-        text = "Chapter I\n\nContent one.\n\nChapter IV\n\nContent two."
+        # Content must be >= 500 chars (SmartChunker.MIN_CHUNK_CHARS) to be valid
+        text = ("Chapter I\n\n" + "This is chapter I content. " * 40 + "\n\n" +
+                "Chapter IV\n\n" + "This is chapter IV content. " * 40)
         chunker = AdaptiveChunker()
         chunks = chunker.chunk(text)
         assert len(chunks) == 2
