@@ -96,7 +96,12 @@ export interface ManuscriptResponse {
   phase: string
   chapters_written: number
   total_chunks: number
-  manuscript: string
+  manuscript?: string
+}
+
+export interface ManuscriptGenerationStatus {
+  message: string
+  book_id: string
 }
 
 export interface AuthToken {
@@ -185,7 +190,10 @@ export const booksApi = {
     custom_rules?: string
     reference_script?: string
   }) =>
-    api.post<ManuscriptResponse>(`/books/${bookId}/manuscript`, options || {}),
+    api.post<ManuscriptGenerationStatus>(`/books/${bookId}/manuscript`, options || {}),
+
+  getManuscript: (bookId: string) =>
+    api.get<ManuscriptResponse>(`/books/${bookId}/manuscript`),
 
   uploadBook: (file: File, meta?: { title?: string; author?: string; publisher?: string }) => {
     const formData = new FormData()

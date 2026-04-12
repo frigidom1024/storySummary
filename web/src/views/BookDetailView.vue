@@ -90,12 +90,20 @@
             {{ isGeneratingManuscript ? '生成中...' : '开始生成' }}
           </button>
 
+          <!-- 生成进度 -->
+          <div v-if="isGeneratingManuscript" class="manuscript-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: (manuscriptProgress?.progress || 0) + '%' }"></div>
+            </div>
+            <div class="progress-text">{{ manuscriptProgress?.message || '正在启动生成...' }}</div>
+          </div>
+
           <div v-if="manuscriptError" class="error-message">{{ manuscriptError }}</div>
 
           <!-- 生成结果 -->
           <div v-if="manuscriptResult" class="manuscript-result">
             <div class="result-header">
-              <span>生成完成 {{ manuscriptResult.chapters_written }}/{{ manuscriptResult.total_chunks }} 章</span>
+              <span>口播稿已生成</span>
             </div>
             <div class="manuscript-content">{{ manuscriptResult.manuscript }}</div>
           </div>
@@ -197,6 +205,9 @@ const manuscriptOptions = ref({
 const isGeneratingManuscript = ref(false)
 const manuscriptResult = ref<ManuscriptResponse | null>(null)
 const manuscriptError = ref<string | null>(null)
+const manuscriptProgress = ref<{ progress: number; message: string; status: string } | null>(null)
+let manuscriptFetchRetries = 0
+const MAX_MANUSCRIPT_RETRIES = 3
 
 const route = useRoute()
 const router = useRouter()
@@ -293,6 +304,12 @@ async function startAnalyze() {
 function connectWebSocket() {
   if (!book.value) return
 
+  // 如果已有连接，先断开
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsUrl = `${protocol}//localhost:8000/api/books/${book.value.id}/ws`
 
@@ -302,6 +319,22 @@ function connectWebSocket() {
     if (event.data === 'pong') return
     try {
       const data = JSON.parse(event.data)
+
+      // 处理口播稿生成进度
+      if (isGeneratingManuscript.value) {
+        manuscriptProgress.value = data
+
+        if (data.status === 'completed') {
+          // 获取生成的口播稿，带重试
+          fetchManuscriptWithRetry(book.value!.id)
+        } else if (data.status === 'failed') {
+          isGeneratingManuscript.value = false
+          manuscriptError.value = data.message || '生成失败'
+        }
+        return
+      }
+
+      // 处理书籍分析进度
       wsProgress.value = data
       pageState.updateProgress(data.progress, data.message)
 
@@ -319,6 +352,18 @@ function connectWebSocket() {
   ws.onclose = (event) => {
     console.log('WebSocket closed', event.code, event.reason)
     ws = null
+
+    // 如果是口播稿生成中，尝试重连
+    if (isGeneratingManuscript.value && manuscriptFetchRetries < MAX_MANUSCRIPT_RETRIES) {
+      console.log('WebSocket 断开，尝试重连...')
+      setTimeout(() => {
+        if (isGeneratingManuscript.value) {
+          connectWebSocket()
+        }
+      }, 1000)
+      return
+    }
+
     if (pageState.isAnalyzing.value && !wsProgress.value?.status) {
       pageState.fail('WebSocket 连接断开，请重试')
     }
@@ -326,7 +371,12 @@ function connectWebSocket() {
 
   ws.onerror = (e) => {
     console.error('WebSocket error:', e)
-    pageState.fail('WebSocket 连接错误，请重试')
+    if (isGeneratingManuscript.value) {
+      manuscriptError.value = 'WebSocket 连接错误'
+    }
+    if (pageState.isAnalyzing.value) {
+      pageState.fail('WebSocket 连接错误，请重试')
+    }
   }
 }
 
@@ -343,6 +393,13 @@ async function generateManuscript() {
   isGeneratingManuscript.value = true
   manuscriptError.value = null
   manuscriptResult.value = null
+  manuscriptProgress.value = null
+  manuscriptFetchRetries = 0
+
+  // 确保 WebSocket 已连接
+  if (!ws) {
+    connectWebSocket()
+  }
 
   try {
     const options = {
@@ -350,11 +407,34 @@ async function generateManuscript() {
       custom_rules: manuscriptOptions.value.custom_rules || undefined,
       reference_script: manuscriptOptions.value.reference_script || undefined,
     }
-    const res = await booksApi.generateManuscript(book.value.id, options)
+    await booksApi.generateManuscript(book.value.id, options)
+    // 进度将通过 WebSocket 更新
+  } catch (e: any) {
+    manuscriptError.value = e.response?.data?.detail || e.message || '启动生成失败'
+    isGeneratingManuscript.value = false
+  }
+}
+
+async function fetchManuscriptWithRetry(bookId: string) {
+  try {
+    const res = await booksApi.getManuscript(bookId)
     manuscriptResult.value = res.data
     showManuscriptPanel.value = true
+    manuscriptFetchRetries = 0
   } catch (e: any) {
-    manuscriptError.value = e.response?.data?.detail || e.message || '生成失败'
+    manuscriptFetchRetries++
+    const errorMsg = e.response?.data?.detail || e.message || '未知错误'
+
+    if (manuscriptFetchRetries < MAX_MANUSCRIPT_RETRIES) {
+      // 重试
+      console.log(`获取口播稿失败，${1000 * manuscriptFetchRetries}ms 后重试...`)
+      setTimeout(() => {
+        fetchManuscriptWithRetry(bookId)
+      }, 1000 * manuscriptFetchRetries)
+    } else {
+      manuscriptError.value = `获取口播稿失败: ${errorMsg}，请稍后刷新页面重试`
+      manuscriptFetchRetries = 0
+    }
   } finally {
     isGeneratingManuscript.value = false
   }
@@ -761,6 +841,31 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+.manuscript-progress {
+  margin-top: 16px;
+}
+
+.manuscript-progress .progress-bar {
+  height: 6px;
+  background: var(--color-border-light);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.manuscript-progress .progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+.manuscript-progress .progress-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 8px;
+  text-align: center;
+}
+
 .manuscript-result {
   margin-top: 20px;
   border: 1px solid var(--color-border);
@@ -772,8 +877,9 @@ onUnmounted(() => {
   padding: 10px 14px;
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 .manuscript-content {

@@ -2,7 +2,7 @@ import os
 import re
 import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 from datetime import datetime
 
 from src.models.narrative_node import NarrativeNode
@@ -85,17 +85,24 @@ class ManuscriptPipeline:
     """口播稿生成 Pipeline"""
 
     def __init__(self, output_dir: str = "output", debug_mode: bool = False,
-                 style_key: str = None, custom_rules: str = None, reference_script: str = None):
+                 style_key: str = None, custom_rules: str = None, reference_script: str = None,
+                 progress_callback: Callable[[int, str], None] = None):
         self.output_dir = output_dir
         self.debug_mode = debug_mode
         self.style_key = style_key
         self.custom_rules = custom_rules
         self.reference_script = reference_script
+        self.progress_callback = progress_callback
         self.db = Database()
         self.json_storage = JsonStorage()
         self.writer = ChapterWriter(debug_mode=debug_mode)
         self.polisher = PolishAgent(debug_mode=debug_mode)
         self.debug_record: Optional[DebugRecord] = None
+
+    def _report_progress(self, progress: int, message: str):
+        """报告进度"""
+        if self.progress_callback:
+            self.progress_callback(progress, message)
 
     async def run(self, book_id: str) -> ManuscriptResult:
         """运行生成流程"""
@@ -160,6 +167,11 @@ class ManuscriptPipeline:
             chunk = chunks[state.current_chunk_index]
             chunk_nodes = [n for n in nodes if n.parent_chunk_id == chunk.id]
 
+            # 报告进度：开始写章节
+            chapter_title = chunk.chapter or f"第{chunk.order + 1}章"
+            progress = int((state.current_chunk_index / len(chunks)) * 80)  # 写作阶段占80%
+            self._report_progress(progress, f"正在生成 {chapter_title}...")
+
             debug("pipeline", "[5.1] 处理 Chunk {}/{}: chunk_id={} title={}",
                   state.current_chunk_index + 1, len(chunks), chunk.id, chunk.chapter or '无标题')
             debug("pipeline", "[5.2] 本章节点数: {} 个", len(chunk_nodes))
@@ -175,6 +187,8 @@ class ManuscriptPipeline:
                 reference_script=self.reference_script,
             )
 
+            # 报告进度：章节完成
+            self._report_progress(progress + 5, f"已完成 {chapter_title}")
             debug("pipeline", "[5.5] 生成章节长度: {} 字", len(chapter_text))
 
             # 记录调试信息
@@ -197,6 +211,7 @@ class ManuscriptPipeline:
         debug("pipeline", "[6] POLISHING 阶段: 开始润色")
         state.phase = WritingPhase.POLISHING
         state.save(state_path)
+        self._report_progress(85, "正在润色全文...")
 
         chunks_dict = {c.id: c for c in chunks}
 
@@ -241,6 +256,9 @@ class ManuscriptPipeline:
             debug_path = out_dir / "debug_record.json"
             self.debug_record.save(debug_path)
             debug("pipeline", "[DEBUG] 调试记录已保存到: {}", debug_path)
+
+        # 报告进度：完成
+        self._report_progress(100, "生成完成")
 
         return ManuscriptResult(
             title=book.title,

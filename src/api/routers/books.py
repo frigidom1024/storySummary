@@ -329,7 +329,7 @@ def save_nodes(
     return {"message": "Nodes saved", "book_id": book_id}
 
 
-@router.post("/{book_id}/manuscript", response_model=ManuscriptResponse)
+@router.post("/{book_id}/manuscript")
 async def generate_manuscript(
     book_id: str,
     request: Optional[ManuscriptRequest] = None,
@@ -337,8 +337,6 @@ async def generate_manuscript(
     book_service: BookService = Depends(get_book_service)
 ):
     """生成口播稿，支持自定义风格和参考稿"""
-    from src.generation.pipeline import ManuscriptPipeline
-
     book = book_service.get_book(book_id)
     if not book:
         raise NotFoundError("书籍")
@@ -350,19 +348,81 @@ async def generate_manuscript(
     custom_rules = request.custom_rules if request else None
     reference_script = request.reference_script if request else None
 
-    # 启动生成
-    pipeline = ManuscriptPipeline(
-        style_key=style_key,
-        custom_rules=custom_rules,
-        reference_script=reference_script,
-    )
-    result = await pipeline.run(book_id)
+    # 启动异步生成
+    asyncio.create_task(_run_manuscript_generation(book_id, style_key, custom_rules, reference_script))
+
+    return {"message": "Manuscript generation started", "book_id": book_id}
+
+
+@router.get("/{book_id}/manuscript", response_model=ManuscriptResponse)
+async def get_manuscript(
+    book_id: str,
+    user_id: str = Depends(get_current_user_id),
+    book_service: BookService = Depends(get_book_service)
+):
+    """获取已生成的口播稿"""
+    import re
+    from pathlib import Path
+
+    book = book_service.get_book(book_id)
+    if not book:
+        raise NotFoundError("书籍")
+    if book.user_id != user_id:
+        raise AuthorizationError("无权访问此书籍")
+
+    # 查找 manuscript.txt
+    safe = re.sub(r'[<>:"/\\|?*]', '_', book.title)
+    manuscript_path = Path("output") / safe / "manuscript.txt"
+
+    if not manuscript_path.exists():
+        raise NotFoundError("口播稿不存在，请先生成")
+
+    manuscript_text = manuscript_path.read_text(encoding="utf-8")
 
     return ManuscriptResponse(
         book_id=book_id,
-        title=result.title,
-        phase=result.phase,
-        chapters_written=result.chapters_written,
-        total_chunks=result.total_chunks,
-        manuscript=result.full_manuscript,
+        title=book.title,
+        phase="done",
+        chapters_written=0,
+        total_chunks=0,
+        manuscript=manuscript_text
     )
+
+
+async def _run_manuscript_generation(
+    book_id: str,
+    style_key: str = None,
+    custom_rules: str = None,
+    reference_script: str = None
+):
+    """在后台运行口播稿生成，通过 WebSocket 发送进度"""
+    from src.generation.pipeline import ManuscriptPipeline
+
+    async def progress_callback(progress: int, message: str):
+        await manager.send_progress(book_id, progress, message, "processing")
+
+    try:
+        await manager.send_progress(book_id, 0, "正在启动生成...", "processing")
+
+        pipeline = ManuscriptPipeline(
+            style_key=style_key,
+            custom_rules=custom_rules,
+            reference_script=reference_script,
+            progress_callback=progress_callback,
+        )
+        result = await pipeline.run(book_id)
+
+        # 发送完成消息
+        await manager.send_progress(
+            book_id,
+            100,
+            f"生成完成！共 {result.chapters_written} 章",
+            "completed"
+        )
+    except Exception as e:
+        await manager.send_progress(
+            book_id,
+            0,
+            f"生成失败: {str(e)}",
+            "failed"
+        )
