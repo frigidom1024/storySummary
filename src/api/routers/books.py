@@ -1,13 +1,16 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from typing import List, Optional
 import os
 import uuid
 import tempfile
+import asyncio
 from src.api.schemas.book import BookCreate, BookResponse, NodesResponse, SaveNodesRequest
 from src.api.schemas.user import UserResponse
 from src.api.deps import get_book_service, get_node_service, get_user_service, get_current_user_id
+from src.api.websocket import manager
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
+from src.services.analyzer import Analyzer
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.epub_parser import parse_epub
@@ -94,6 +97,12 @@ async def upload_book(
     book_id = str(uuid.uuid4())
     nodes_file_path = f"data/books/{book_id}"
 
+    # 保存原始文件到 data 目录
+    os.makedirs("data", exist_ok=True)
+    file_path = os.path.join("data", f"{book_id}.{ext}")
+    with open(file_path, 'wb') as f:
+        f.write(file_bytes)
+
     # 保存封面
     cover_url = None
     if cover_image and cover_extension:
@@ -115,6 +124,70 @@ async def upload_book(
     )
 
     return BookResponse.model_validate(new_book)
+
+
+@router.post("/{book_id}/analyze")
+async def analyze_book(
+    book_id: str,
+    user_id: str = Depends(get_current_user_id),
+    book_service: BookService = Depends(get_book_service)
+):
+    """启动书籍 AI 解析（异步，通过 WebSocket 推送进度）"""
+    book = book_service.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if book.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to analyze this book")
+
+    # 更新状态为 processing
+    book_service.update_book_status(book_id, "processing")
+
+    # 启动异步分析
+    asyncio.create_task(_run_analysis(book_id))
+
+    return {"message": "Analysis started", "book_id": book_id}
+
+
+async def _run_analysis(book_id: str):
+    """Run analysis in background with progress reporting."""
+    async def progress_callback(progress: int, message: str):
+        await manager.send_progress(book_id, progress, message)
+
+    try:
+        analyzer = Analyzer()
+        file_type = None
+        actual_path = None
+
+        # 查找 epub 或 txt 文件
+        for ext in ['epub', 'txt']:
+            potential_path = f"data/{book_id}.{ext}"
+            if os.path.exists(potential_path):
+                actual_path = potential_path
+                file_type = ext
+                break
+
+        if not actual_path or not file_type:
+            await manager.send_progress(book_id, 0, "未找到书籍文件", "failed")
+            return
+
+        await analyzer.analyze(book_id, actual_path, file_type, progress_callback)
+    except Exception as e:
+        await manager.send_progress(book_id, 0, f"解析失败: {str(e)}", "failed")
+
+
+@router.websocket("/{book_id}/ws")
+async def websocket_endpoint(websocket: WebSocket, book_id: str):
+    """WebSocket 端点，用于接收解析进度"""
+    await manager.connect(book_id, websocket)
+    try:
+        while True:
+            # 保持连接，等待分析完成
+            data = await websocket.receive_text()
+            # 客户端可以发送心跳
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(book_id, websocket)
 
 
 @router.get("", response_model=List[BookResponse])
