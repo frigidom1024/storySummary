@@ -17,11 +17,8 @@ from langchain_core.messages import ToolMessage
 logger = logging.getLogger("story-summary")
 
 
-def create_llm(api_key: str = None, model: str = None, **kwargs) -> ChatOpenAI:
+def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
     """Create LLM client with DeepSeek, OpenAI, or DashScope compatibility."""
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    api_base = os.getenv("DEEPSEEK_API_BASE") or os.getenv("OPENAI_API_BASE") or os.getenv("DASHSCOPE_API_BASE")
-
     model = model or os.getenv("LLM_MODEL", "deepseek-chat")
 
     llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
@@ -89,14 +86,27 @@ class NarrativeNodeGenerator:
     def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
         self.book_id = book_id  # injected externally by pipeline
         self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
-        self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7)
+
+        # 优先使用传入的 api_key，其次环境变量
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        api_base = os.getenv("DEEPSEEK_API_BASE")
+
+        if api_key:
+            self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7, api_base=api_base)
+        else:
+            self.llm = None
 
         # Use JsonOutputParser which works with DeepSeek via prompt-based approach
-        # (DeepSeek doesn't support response_format parameter used by with_structured_output)
         self.output_parser = JsonOutputParser(pydantic_schema=NarrativeBeatsOutput)
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
         """Generate MULTIPLE narrative beats from ONE chunk using structured output + tool calling."""
+        if self.llm is None:
+            raise ValueError(
+                "LLM API Key 未配置。请设置 DEFAULT_API_KEY 和 DEFAULT_API_BASE 环境变量，"
+                "或配置 DEEPSEEK_API_KEY / OPENAI_API_KEY 环境变量。"
+            )
+
         prompt = MULTI_BEAT_NODE_PROMPT.format(
             text=chunk.text,
             chunk_order=chunk.order

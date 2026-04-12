@@ -11,6 +11,7 @@ from src.storage.vector_store import VectorStore
 from src.storage.json_storage import JsonStorage
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
+from src.logging_config import debug
 
 
 class Analyzer:
@@ -46,22 +47,27 @@ class Analyzer:
         await report(0, "开始解析文件...")
 
         # Read book content
+        debug("analyzer", "book_id={} reading file type={}", book_id, file_type)
         if file_type == 'epub':
             text = await self._read_epub(file_path)
         else:
             text = await self._read_txt(file_path)
+        debug("analyzer", "book_id={} text length={} chars", book_id, len(text))
 
         await report(5, "文件解析完成")
 
         # Chunk the novel
         await report(10, "开始分章...")
+        debug("analyzer", "book_id={} starting chunking", book_id)
         chunks = self.chunker.chunk(text)
+        debug("analyzer", "book_id={} chunked into {} chapters", book_id, len(chunks))
         await report(20, f"分章完成，共 {len(chunks)} 个章节")
         await asyncio.sleep(0.1)  # Small delay for UI update
 
         # Generate nodes
         all_nodes = []
         total_chunks = len(chunks)
+        debug("analyzer", "book_id={} starting node generation for {} chunks", book_id, total_chunks)
 
         for i, chunk in enumerate(chunks):
             chunk_progress = 20 + int((i / total_chunks) * 60)
@@ -70,13 +76,15 @@ class Analyzer:
             # Generate nodes for this chunk
             chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
             self.node_generator.book_id = book_id
+            debug("node_generator", "book_id={} chunk={}/{} generating nodes", book_id, i+1, total_chunks)
 
             try:
                 nodes = await self.node_generator.generate_from_chunk(chunk)
                 if not isinstance(nodes, list):
                     nodes = [nodes] if nodes else []
+                debug("node_generator", "book_id={} chunk={} generated {} nodes", book_id, i, len(nodes))
             except Exception as e:
-                print(f"Error generating nodes for chunk {i}: {e}")
+                debug("node_generator", "book_id={} chunk={} error={}", book_id, i, str(e))
                 nodes = []
 
             # Link nodes
@@ -93,15 +101,18 @@ class Analyzer:
 
             await asyncio.sleep(0.05)  # Small delay for UI update
 
+        debug("analyzer", "book_id={} node generation complete, total_nodes={}", book_id, len(all_nodes))
         await report(80, "节点生成完成，正在构建结构...")
 
         # Build structure
+        debug("analyzer", "book_id={} building structure", book_id)
         structure = self.structure_builder.build(all_nodes)
         self._save_structure(book_id, structure)
 
         await report(95, "保存完成")
 
         # Update book status to completed
+        debug("analyzer", "book_id={} updating status to completed", book_id)
         self.db.update_book_status(book_id, "completed")
 
         await report(100, "解析完成！")
