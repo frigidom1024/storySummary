@@ -1,11 +1,12 @@
 from typing import Generator, Optional
-from fastapi import Header, HTTPException
+from fastapi import Header
 from src.storage.database import Database
 from src.storage.path_builder import PathBuilder
 from src.storage.json_storage import JsonStorage
 from src.services.user_service import UserService
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
+from src.api.exceptions import AuthenticationError
 
 # 全局实例（单例模式）
 _db = None
@@ -63,18 +64,18 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     from src.api.security import decode_token
 
     if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise AuthenticationError("未提供认证信息")
 
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+        raise AuthenticationError("认证格式无效，请使用 Bearer Token")
 
     token = authorization[7:]
     payload = decode_token(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise AuthenticationError("Token 已过期或无效")
 
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+        raise AuthenticationError("Token 载荷无效")
 
     return user_id

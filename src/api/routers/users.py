@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from src.api.schemas.user import UserResponse
 from src.api.deps import get_user_service, get_current_user_id
 from src.services.user_service import UserService
+from src.api.exceptions import NotFoundError
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -14,7 +15,7 @@ def get_me(
     """获取当前用户信息"""
     user = user_service.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundError("用户")
     return user
 
 
