@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 class ChapterDraft(BaseModel):
     """单章草稿"""
-    chunk_id: str
+    chunk_id: str 
     chapter_text: str
 
 

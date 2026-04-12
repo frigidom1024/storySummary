@@ -74,7 +74,9 @@ class ManuscriptPipeline:
         state.phase = WritingPhase.POLISHING
         state.save(state_path)
 
-        polished = await self.polisher.polish(context.full_draft())
+        # 构建 chunks 映射供润色使用
+        chunks_dict = {c.id: c for c in chunks}
+        polished = await self.polisher.polish(context.drafts, chunks_dict)
 
         # 7. 保存最终稿
         safe = re.sub(r'[<>:"/\\|?*]', '_', book.title)
