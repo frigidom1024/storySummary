@@ -269,7 +269,9 @@ git commit -m "feat(reader): 添加 TxtReader 和文本分块器"
 
 确认 `Chunk` 模型和 `chunk_epub_by_id` 的 book 定位逻辑。
 
-- [ ] **Step 2: 重写文件内容**
+- [ ] **Step 2: 重写文件内容（删除所有现有实现，包括 ChapterChunker、SmartChunker 等）**
+
+整个文件被 `chunk_by_book_id()` 和 `_build_chunks_from_chapters()` 替换，原有的 `ChapterChunker`、`SmartChunker`、`AdaptiveChunker`、`TextChunker`、`EpubChunker` 等全部删除。
 
 ```python
 """应用层分块接口 - 根据 book_id 返回分章节结果"""
@@ -352,14 +354,50 @@ git commit -m "refactor(chunker): 重写为单一接口 chunk_by_book_id()"
 
 ---
 
-## Chunk 3: 删除废弃文件
+## Chunk 3: 更新 src/utils/__init__.py（先于文件删除）
+
+**Files:**
+- Modify: `src/utils/__init__.py`
+
+### Task 6: 更新 src/utils/__init__.py（必须在删除旧文件之前）
+
+- [ ] **Step 1: 更新 __init__.py**
+
+`src/utils/__init__.py` 当前从旧模块导入，删除前必须先更新：
+
+```python
+# 旧：
+from src.utils.epub_reader import EpubReader, read_epub
+from src.utils.book_adapter import BookReader, EpubBookReader, PdfBookReader, read_book
+
+# 新：
+from src.utils.reader import BookReader, read_book
+from src.utils.reader.epub import EpubReader
+from src.utils.reader.pdf import PdfReader
+from src.utils.reader.text import TxtReader
+
+__all__ = ["BookReader", "read_book", "EpubReader", "PdfReader", "TxtReader"]
+```
+
+注：`read_epub` 不在 `src/` 中任何地方被 import，仅本项目内部使用，安全删除。
+
+- [ ] **Step 2: 提交**
+
+```bash
+git add src/utils/__init__.py
+git commit -m "refactor(utils): 更新 __init__.py 指向新 reader 模块"
+```
+
+---
+
+## Chunk 4: 删除废弃文件
 
 **Files:**
 - Delete: `src/utils/book_adapter.py`
 - Delete: `src/utils/epub_reader.py`
 - Delete: `src/utils/epub_chunker.py`
 
-### Task 6: 删除废弃文件
+### Task 7: 删除废弃文件（必须在 Task 6 之后执行）
 
 - [ ] **Step 1: 删除文件**
 
@@ -378,16 +416,15 @@ git commit -m "refactor: 删除废弃的 book_adapter, epub_reader, epub_chunker
 
 ---
 
-## Chunk 4: 更新调用方
+## Chunk 5: 更新调用方
 
 **Files:**
 - Modify: `src/pipeline.py`
 - Modify: `src/services/analyzer.py`
 - Modify: `tests/core/test_chunker.py`
 - Modify: `tests/core/test_node_generator.py`
-- Modify: `src/generation/pipeline.py`
 
-### Task 7: 更新 src/pipeline.py
+### Task 8: 更新 src/pipeline.py
 
 **Files:**
 - Modify: `src/pipeline.py:4`（imports）
@@ -395,7 +432,6 @@ git commit -m "refactor: 删除废弃的 book_adapter, epub_reader, epub_chunker
 - Modify: `src/pipeline.py:52,134`（read_book import）
 - Modify: `src/pipeline.py:63`（chunk 调用处）
 - Modify: `src/pipeline.py:146`（chunk 调用处）
-- Modify: `src/utils/__init__.py`
 
 - [ ] **Step 1: 更新 src/core/chunker import**
 
@@ -433,30 +469,14 @@ chunks = self.chunker.chunk(novel_text)
 chunks = chunk_by_book_id(book_id)
 ```
 
-- [ ] **Step 5: 更新 src/utils/__init__.py**
-
-```python
-# 旧：
-from src.utils.epub_reader import EpubReader, read_epub
-from src.utils.book_adapter import BookReader, EpubBookReader, PdfBookReader, read_book
-
-# 新：
-from src.utils.reader import BookReader, read_book, EpubReader, PdfReader, TxtReader
-from src.utils.reader.epub import EpubReader
-from src.utils.reader.pdf import PdfReader
-from src.utils.reader.text import TxtReader
-
-__all__ = ["BookReader", "read_book", "EpubReader", "PdfReader", "TxtReader"]
-```
-
-- [ ] **Step 6: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
-git add src/pipeline.py src/utils/__init__.py
+git add src/pipeline.py
 git commit -m "refactor(pipeline): 迁移到 chunk_by_book_id() 和 reader 模块"
 ```
 
-### Task 8: 更新 src/services/analyzer.py
+### Task 9: 更新 src/services/analyzer.py
 
 **Files:**
 - Modify: `src/services/analyzer.py:6,23`（imports 和 __init__）
@@ -506,7 +526,7 @@ git add src/services/analyzer.py
 git commit -m "refactor(analyzer): 迁移到 chunk_by_book_id()"
 ```
 
-### Task 9: 更新测试文件
+### Task 10: 更新测试文件
 
 **Files:**
 - Modify: `tests/core/test_chunker.py`
@@ -551,27 +571,9 @@ git add tests/core/test_chunker.py tests/core/test_node_generator.py
 git commit -m "refactor(tests): 迁移到 reader.text 模块"
 ```
 
-### Task 10: 更新 src/generation/pipeline.py
-
-**Files:**
-- Modify: `src/generation/pipeline.py`
-
-- [ ] **Step 1: 检查并移除未使用的 ChapterChunker 导入**
-
-`src/generation/pipeline.py` 导入了 `ChapterChunker` 但未实际使用（`_load_chunks` 从 JSON 读取）。
-
-删除未使用的 `ChapterChunker` import。
-
-- [ ] **Step 2: 提交**
-
-```bash
-git add src/generation/pipeline.py
-git commit -m "chore(generation/pipeline): 移除未使用的 ChapterChunker 导入"
-```
-
 ---
 
-## Chunk 5: 验证
+## Chunk 6: 验证
 
 - [ ] **Step 1: 运行测试确认重构正确**
 
