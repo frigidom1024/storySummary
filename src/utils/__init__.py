@@ -1,4 +1,6 @@
-from src.utils.epub_reader import EpubReader, read_epub
-from src.utils.book_adapter import BookReader, EpubBookReader, PdfBookReader, read_book
+from src.utils.reader import BookReader, read_book
+from src.utils.reader.epub import EpubReader
+from src.utils.reader.pdf import PdfReader
+from src.utils.reader.text import TxtReader
 
-__all__ = ["EpubReader", "read_epub", "BookReader", "EpubBookReader", "PdfBookReader", "read_book"]
+__all__ = ["BookReader", "read_book", "EpubReader", "PdfReader", "TxtReader"]
