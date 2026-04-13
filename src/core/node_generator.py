@@ -285,7 +285,8 @@ class NarrativeNodeGenerator:
         prompt = BASE_NODE_PROMPT.format(
             text=chunk.text,
             chunk_order=chunk.order,
-            last_nodes=""
+            last_nodes="",
+            beat_index=0
         )
 
         debug("node_generator", "Calling LLM for chunk {} model={}", chunk.id, self.model_name)
@@ -371,7 +372,9 @@ class NarrativeNodeGenerator:
 
         # Parse beats from final content
         beats_list = self._extract_beats(final_content)
-        debug("node_generator", "Extracted {} beats", len(beats_list))
+        debug("node_generator", "Extracted {} beats from LLM", len(beats_list))
+        if beats_list:
+            debug("node_generator", "Sample beat[0]: {}", beats_list[0])
 
         validated_beats: list[dict] = []
         for beat_dict in beats_list:
@@ -380,12 +383,35 @@ class NarrativeNodeGenerator:
                 continue
             validated_beats.append(validated)
 
+        debug("node_generator", "Phase1-Agent1: Validated {} beats", len(validated_beats))
+        for i, vb in enumerate(validated_beats):
+            debug("node_generator", "  beat[{}] id={} scene={} chars={} interactions={} importance={}",
+                  i, vb.get('id'), vb.get('scene', '')[:30], len(vb.get('characters', [])),
+                  len(vb.get('interactions', [])), vb.get('importance'))
+
         if self.pipeline_config.enable_agent2_agent3 and validated_beats:
+            debug("node_generator", "Phase2-Agent2: Starting time anchor resolution for {} nodes", len(validated_beats))
             time_anchors = await self.time_anchor_resolver.resolve(validated_beats, last_timeline_state={})
+            debug("node_generator", "Phase2-Agent2: Got {} time anchor results", len(time_anchors))
+            for i, ta in enumerate(time_anchors):
+                debug("node_generator", "  anchor[{}] node_id={} time_type={} relative={} confidence={}",
+                      i, ta.node_id, ta.time_type, ta.relative_to_prev, ta.confidence)
+
+            debug("node_generator", "Phase3-Agent3: Starting graph build for {} nodes", len(validated_beats))
             validated_beats = await self.graph_builder.build(validated_beats, time_anchors)
+            debug("node_generator", "Phase3-Agent3: Graph build complete")
+            for i, vb in enumerate(validated_beats):
+                debug("node_generator", "  beat[{}] id={} thread_id={} timeline_order={} timeline_anchor={}",
+                      i, vb.get('id'), vb.get('thread_id'), vb.get('timeline_order'), vb.get('timeline_anchor'))
 
         if self.pipeline_config.enable_character_tracker and validated_beats:
+            debug("node_generator", "Phase4-CharacterTracker: Processing {} nodes", len(validated_beats))
             self.character_tracker.process_nodes(validated_beats)
+            char_count = len(self.character_tracker.characters)
+            debug("node_generator", "Phase4-CharacterTracker: Now tracking {} characters", char_count)
+            for char_name, card in self.character_tracker.characters.items():
+                debug("node_generator", "  char={} appearances={} relationships={} key_events={}",
+                      char_name, card.total_appearances, list(card.relationships.keys()), len(card.key_events))
             self.last_character_data = {
                 "characters": self.character_tracker.get_all_characters(),
                 "relationship_graph": self.character_tracker.get_relationship_graph(),

@@ -6,6 +6,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.prompts.graph_builder_prompt import GRAPH_BUILDER_PROMPT
 
+from src.logging_config import debug as debug_log
+
 logger = logging.getLogger("story-summary")
 
 
@@ -79,10 +81,13 @@ class GraphBuilder:
     async def build(self, nodes: list[dict], time_anchors: list, thread_enabled: bool = True) -> list[dict]:
         if not nodes:
             return []
+        debug_log("agent3", "GraphBuilder.build called with {} nodes, thread_enabled={}", len(nodes), thread_enabled)
         if not thread_enabled or self.llm is None:
+            debug_log("agent3", "LLM disabled, using defaults")
             return self._build_with_defaults(nodes)
 
         context = self.get_context_summary()
+        debug_log("agent3", "Context summary: threads={} recent={}", list(context["thread_summaries"].keys()), len(context["recent_nodes"]))
         prompt = GRAPH_BUILDER_PROMPT.format(
             nodes=json.dumps(nodes, ensure_ascii=False),
             recent_nodes=json.dumps(context["recent_nodes"], ensure_ascii=False),
@@ -95,14 +100,18 @@ class GraphBuilder:
             ]
         )
         content = response.content if getattr(response, "content", None) else "[]"
+        debug_log("agent3", "LLM response length={} content_preview={}", len(content), content[:150])
         try:
             llm_results = json.loads(content)
+            debug_log("agent3", "Parsed {} LLM results", len(llm_results))
         except Exception:
             logger.warning("Failed to parse GraphBuilderResult, fallback defaults: %s", content[:200])
+            debug_log("agent3", "Parse failed, using defaults")
             return self._build_with_defaults(nodes)
         return self._merge_with_program(nodes, time_anchors, llm_results)
 
     def _merge_with_program(self, nodes: list[dict], time_anchors: list, llm_results: list[dict]) -> list[dict]:
+        debug_log("agent3", "_merge_with_program: {} nodes, {} anchors, {} llm_results", len(nodes), len(time_anchors), len(llm_results))
         result_map = {r.get("node_id", ""): r for r in llm_results}
         for idx, node in enumerate(nodes):
             node_id = node.get("id", "")
@@ -116,9 +125,12 @@ class GraphBuilder:
             node["thread_id"] = thread_id
             node["thread_hint"] = thread_hint
             node["thread_prev_node_id"] = self.thread_state.get_last_node(thread_id)
+            debug_log("agent3", "  node[{}] id={} thread={} timeline_order={} chars={}",
+                      idx, node_id, thread_id, node["timeline_order"], characters)
 
             self.thread_state.add_thread(thread_id, characters)
             self.thread_state.set_last_node(thread_id, node_id)
+        debug_log("agent3", "Final threads: {}", list(self.thread_state.threads.keys()))
         return nodes
 
     def _calc_timeline_order(self, time_info: dict) -> int:

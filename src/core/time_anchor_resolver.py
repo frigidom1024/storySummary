@@ -6,6 +6,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.prompts.time_anchor import TIME_ANCHOR_PROMPT
 
+from src.logging_config import debug as debug_log
+
 logger = logging.getLogger("story-summary")
 
 
@@ -35,9 +37,13 @@ class TimeAnchorResolver:
         if not nodes:
             return []
 
+        debug_log("agent2", "TimeAnchorResolver.resolve called with {} nodes", len(nodes))
+
         if self.llm is None:
+            debug_log("agent2", "No LLM configured, returning default TimeAnchorResults")
             return [TimeAnchorResult(node_id=n.get("id", "")) for n in nodes]
 
+        debug_log("agent2", "Calling LLM for time anchor resolution...")
         prompt = TIME_ANCHOR_PROMPT.format(
             last_timeline_state=json.dumps(last_timeline_state or {}, ensure_ascii=False),
             nodes=json.dumps(nodes, ensure_ascii=False),
@@ -49,8 +55,12 @@ class TimeAnchorResolver:
             ]
         )
         content = response.content if getattr(response, "content", None) else "[]"
+        debug_log("agent2", "LLM response length={} content_preview={}", len(content), content[:150])
         try:
-            return [TimeAnchorResult(**item) for item in json.loads(content)]
+            results = [TimeAnchorResult(**item) for item in json.loads(content)]
+            debug_log("agent2", "Parsed {} TimeAnchorResults", len(results))
+            return results
         except Exception:
             logger.warning("Failed to parse TimeAnchorResult, fallback to defaults: %s", content[:200])
+            debug_log("agent2", "Parse failed, returning default results")
             return [TimeAnchorResult(node_id=n.get("id", "")) for n in nodes]
