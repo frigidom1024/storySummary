@@ -9,7 +9,7 @@ from src.models.narrative_node import NarrativeNode
 from src.models.chunk import Chunk
 from src.generation.models import ManuscriptResult, ChapterDraft
 from src.storage.database import Database
-from src.storage.json_storage import JsonStorage
+from src.storage.book_storage import BookStorage
 from src.generation.state import WritingState, WritingPhase
 from src.generation.context import WritingContext
 from src.generation.writer import ChapterWriter
@@ -94,7 +94,7 @@ class ManuscriptPipeline:
         self.reference_script = reference_script
         self.progress_callback = progress_callback
         self.db = Database()
-        self.json_storage = JsonStorage()
+        self.book_storage = BookStorage()
         self.writer = ChapterWriter(debug_mode=debug_mode)
         self.polisher = PolishAgent(debug_mode=debug_mode)
         self.debug_record: Optional[DebugRecord] = None
@@ -269,23 +269,10 @@ class ManuscriptPipeline:
         )
 
     def _load_nodes(self, book_id: str) -> list[NarrativeNode]:
-        book = self.db.get_book(book_id)
-        nodes_file = f"{book.nodes_file_path}/nodes.json"
-        data = self.json_storage.read(nodes_file)
-
-        if isinstance(data, dict):
-            nodes_list = data.get("nodes", [])
-        else:
-            nodes_list = data or []
-
-        return [NarrativeNode.model_validate(n) for n in nodes_list]
+        return self.book_storage.load_nodes(book_id)
 
     def _load_chunks(self, book_id: str) -> list[Chunk]:
-        book = self.db.get_book(book_id)
-        chunks_file = f"{book.nodes_file_path}/chunks.json"
-        data = self.json_storage.read(chunks_file) or []
-
-        return [Chunk.model_validate(c) for c in data]
+        return self.book_storage.load_chunks(book_id)
 
     async def _phase_prepare(self, nodes: list[NarrativeNode]) -> None:
         """[PREPARE] 阶段：加载所有 nodes 建立全局理解"""

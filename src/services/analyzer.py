@@ -8,7 +8,7 @@ from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
-from src.storage.json_storage import JsonStorage
+from src.storage.book_storage import BookStorage
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 import logging
@@ -22,7 +22,7 @@ class Analyzer:
 
     def __init__(self, db_path: str = "data/story_summary.db", data_path: str = "data"):
         self.db = Database(db_path)
-        self.json_storage = JsonStorage()
+        self.book_storage = BookStorage()
         self.node_generator = NarrativeNodeGenerator()
         self.structure_builder = StructureBuilder()
         self.vector_store = VectorStore(f"{data_path}/vectors")
@@ -203,36 +203,32 @@ class Analyzer:
             return f.read()
 
     def _save_chunk_and_nodes(self, book_id: str, chunk_id: str, chunk, nodes: list):
-        """Save chunk and nodes to storage."""
-        nodes_dir = f"data/books/{book_id}"
-        os.makedirs(nodes_dir, exist_ok=True)
+        """Save chunk and nodes to storage using BookStorage."""
+        # 追加保存 chunk
+        chunk_obj = chunk
+        if hasattr(chunk, 'to_dict'):
+            chunk_obj = chunk
+        else:
+            from src.models.chunk import Chunk
+            chunk_obj = Chunk(
+                id=chunk_id,
+                text=chunk.text if hasattr(chunk, 'text') else str(chunk),
+                chapter=getattr(chunk, 'chapter', None),
+                order=getattr(chunk, 'order', 0)
+            )
+        self.book_storage.append_chunk(book_id, chunk_obj)
 
-        # Save chunk
-        chunk_file = f"{nodes_dir}/chunks.json"
-        chunks_data = []
-        if os.path.exists(chunk_file):
-            chunks_data = self.json_storage.read(chunk_file) or []
-        chunks_data.append({
-            "id": chunk_id,
-            "text": chunk.text,
-            "chapter": getattr(chunk, 'chapter', None),
-            "order": getattr(chunk, 'order', 0)
-        })
-        self.json_storage.write(chunk_file, chunks_data)
-
-        # Save nodes
-        nodes_file = f"{nodes_dir}/nodes.json"
-        nodes_data = []
-        if os.path.exists(nodes_file):
-            nodes_data = self.json_storage.read(nodes_file) or []
+        # 追加保存 nodes
         for node in nodes:
             if node:
-                nodes_data.append(node.to_dict() if hasattr(node, 'to_dict') else node)
-        self.json_storage.write(nodes_file, nodes_data)
+                self.book_storage.append_node(book_id, node)
 
     def _save_structure(self, book_id: str, structure: StoryStructure):
         """Save story structure to storage."""
         nodes_dir = f"data/books/{book_id}"
+        import os
         os.makedirs(nodes_dir, exist_ok=True)
         structure_file = f"{nodes_dir}/structure.json"
-        self.json_storage.write(structure_file, structure.model_dump())
+        import json
+        with open(structure_file, 'w', encoding='utf-8') as f:
+            json.dump(structure.model_dump(), f, ensure_ascii=False, indent=2)

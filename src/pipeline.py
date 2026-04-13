@@ -6,6 +6,7 @@ from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
+from src.storage.book_storage import BookStorage
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.models.chunk import Chunk
@@ -28,6 +29,7 @@ class NovelToPodcastPipeline:
         self.structure_builder = StructureBuilder()
         self.db = Database(db_path)
         self.vector_store = VectorStore(vector_store_path)
+        self.book_storage = BookStorage()
         self.title = None
         self.book_id = None
 
@@ -37,13 +39,31 @@ class NovelToPodcastPipeline:
             # Check if book with this title exists for this user
             books = self.db.get_books_for_user(self.user_id)
             for b in books:
-                if b["title"] == title:
-                    self.book_id = b["id"]
+                if b.title == title:
+                    self.book_id = b.id
                     break
             else:
                 # Create new book
+                from src.models.book import Book
+                from datetime import datetime
                 self.book_id = str(uuid.uuid4())
-                self.db.save_book_metadata(self.book_id, self.user_id, title)
+                book = Book(
+                    id=self.book_id,
+                    user_id=self.user_id,
+                    title=title,
+                    author="",
+                    publisher="",
+                    cover_url="",
+                    nodes_file_path=f"data/books/{self.book_id}/nodes.json",
+                    status="processing",
+                    message="",
+                    is_deleted=False,
+                    created_at=datetime.now(),
+                )
+                self.db.create_book(book)
+                # Create book directory
+                book_dir = Path(f"data/books/{self.book_id}")
+                book_dir.mkdir(parents=True, exist_ok=True)
         return self.book_id
 
     async def process_file(self, book_path: str) -> dict:
@@ -70,9 +90,10 @@ class NovelToPodcastPipeline:
         book_id = book_id or self._ensure_book(title)
         logger.info(f"[{title}] Starting pipeline... (book_id={book_id})")
 
-        # 1. Chunk the novel
+        # 1. Chunk the novel - use AdaptiveChunker directly since we have the text
+        from src.utils.reader.text import AdaptiveChunker
         logger.info(f"[{title}] Chunking novel...")
-        chunks = chunk_by_book_id(book_id)
+        chunks = AdaptiveChunker().chunk(novel_text)
         logger.info(f"[{title}] Generated {len(chunks)} chunks")
 
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
@@ -104,13 +125,14 @@ class NovelToPodcastPipeline:
                 if not node.id:
                     node.id = f"n-{i}-{j}"
 
-                # Save to storage with book_id isolation
-                self.db.save_node(node, book_id)
-                self.db.save_chunk(book_id, chunk_id, chunk.text, chunk.chapter, chunk.order or i)
-                self.vector_store.add_node(node, chunk.text, book_id)
+                # Save to book repository (JSON files)
+                self.book_storage.append_node(book_id, node)
 
                 prev_node = node
                 all_nodes.append(node)
+
+        # Save chunks for tool queries
+        self.book_storage.save_chunks(book_id, chunks)
 
         logger.info(f"[{title}] Total: {total_beats} narrative nodes generated")
 
@@ -120,7 +142,8 @@ class NovelToPodcastPipeline:
         logger.info(f"[{title}] Structure: opening={len(structure.opening)}, rising={len(structure.rising)}, climax={len(structure.climax)}, ending={len(structure.ending)}")
 
         # 4. Save structure
-        self.db.save_structure(book_id, structure)
+        if hasattr(self.db, 'save_structure'):
+            self.db.save_structure(book_id, structure)
         logger.info(f"[{title}] Pipeline complete!")
 
         return {
