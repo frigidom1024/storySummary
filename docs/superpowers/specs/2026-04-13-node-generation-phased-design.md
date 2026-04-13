@@ -192,6 +192,56 @@ prev_node = find_last_node_in_thread(thread_id, recent_nodes)
 
 ---
 
+### 🏷️ CharacterTracker：角色追踪（程序模块）
+
+**输入：** Agent1 输出的 nodes + interactions + emotional_arc
+
+**职责：**
+- 实时构建人物卡片
+- 累积关系图（从 interactions 推导）
+- 累积角色情绪轨迹（从 emotional_arc 推导）
+
+**人物卡片结构：**
+```json
+{
+  "character_id": "陈屿",
+  "name": "陈屿",
+  "first_seen": "n-0-0",
+  "current_state": "无聊",
+  "total_appearances": 12,
+  "relationships": {
+    "老板": {
+      "type": "tension",
+      "current_intensity": 0.6,
+      "history": [
+        {"node_id": "n-0-0", "intensity": 0.3},
+        {"node_id": "n-1-2", "intensity": 0.6}
+      ]
+    }
+  },
+  "emotional_timeline": [
+    {"node_id": "n-0-0", "emotion": "无聊"},
+    {"node_id": "n-1-1", "emotion": "微妙"}
+  ],
+  "key_events": ["n-0-3", "n-2-1"]
+}
+```
+
+**更新逻辑（实时）：**
+```
+每处理一个 node:
+1. 提取 characters 中首次出现的角色 → 创建卡片
+2. 从 interactions 累积关系强度变化 → 更新 relationships
+3. 从 emotional_arc 提取情绪状态 → 更新 emotional_timeline
+4. importance >= 0.8 的节点涉及该角色 → 记录到 key_events
+```
+
+**前端数据输出：**
+- **人物关系图**：CharacterTracker.relationships → 节点=人物，边=关系强度
+- **个人发展轨迹**：CharacterTracker.emotional_timeline → X=timeline, Y=情绪分类
+
+---
+
 ## 滑动上下文设计
 
 每个 chunk 处理时，携带"上下文摘要"而非全量数据：
@@ -236,9 +286,16 @@ prev_node = find_last_node_in_thread(thread_id, recent_nodes)
 - LLM 部分：轻量 thread_hint
 - 程序部分：thread 分配、prev_node 连接、timeline_order 计算
 
-### 第四步：流水线整合
+### 第四步：CharacterTracker（新增）
+- 新建 `CharacterTracker` 类
+- 从 Agent1 nodes 实时提取并更新人物卡片
+- 累积 interactions → 关系图
+- 累积 emotional_arc → 情绪轨迹
+
+### 第五步：流水线整合
 - 修改 `NarrativeNodeGenerator` 支持三阶段调用
 - 实现滑动上下文传递
+- CharacterTracker 实时更新人物卡片
 - 程序 merge 更新逻辑
 
 ---
