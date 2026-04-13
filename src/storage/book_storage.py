@@ -1,0 +1,235 @@
+"""书籍仓储 - 统一管理书籍的文件存储（book file, chunks, nodes, covers）"""
+
+import os
+import json
+import shutil
+import tempfile
+from pathlib import Path
+from typing import List, Optional
+
+from src.models.narrative_node import NarrativeNode
+from src.models.chunk import Chunk
+
+
+class BookStorage:
+    """书籍仓储 - 统一管理书籍的所有文件存储"""
+
+    def __init__(self, base_dir: str = "data"):
+        self.base_dir = Path(base_dir)
+        self.books_dir = self.base_dir / "books"
+        self.covers_dir = self.base_dir / "covers"
+        self.books_dir.mkdir(parents=True, exist_ok=True)
+        self.covers_dir.mkdir(parents=True, exist_ok=True)
+
+    # === 路径构建 ===
+
+    def _book_dir(self, book_id: str) -> Path:
+        """获取书籍目录"""
+        self._validate_id(book_id)
+        return self.books_dir / book_id
+
+    def _nodes_file(self, book_id: str) -> str:
+        """nodes.json 文件路径"""
+        return str(self._book_dir(book_id) / "nodes.json")
+
+    def _chunks_file(self, book_id: str) -> str:
+        """chunks.json 文件路径"""
+        return str(self._book_dir(book_id) / "chunks.json")
+
+    def _validate_id(self, id_str: str) -> None:
+        """验证 ID 格式，防止路径遍历"""
+        clean = id_str.replace('-', '').replace('_', '')
+        if not clean.isalnum():
+            raise ValueError(f"Invalid ID format: {id_str}")
+
+    # === JSON 原子写入 ===
+
+    def _write_json(self, file_path: str, data) -> None:
+        """原子写入 JSON 文件"""
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.json', dir=path.parent)
+        try:
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, path)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
+    def _read_json(self, file_path: str):
+        """读取 JSON 文件"""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"JSON file not found: {file_path}")
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    # === Book Files ===
+
+    def save_book_file(self, book_id: str, file_bytes: bytes, ext: str) -> str:
+        """保存书籍文件"""
+        file_path = self.base_dir / f"{book_id}.{ext}"
+        with open(file_path, 'wb') as f:
+            f.write(file_bytes)
+        return str(file_path)
+
+    def get_book_file(self, book_id: str) -> Optional[tuple[str, str]]:
+        """获取书籍文件路径和扩展名，返回 (path, ext) 或 None"""
+        for ext in ['epub', 'txt', 'pdf']:
+            file_path = self.base_dir / f"{book_id}.{ext}"
+            if file_path.exists():
+                return str(file_path), ext
+        return None
+
+    def book_file_exists(self, book_id: str) -> bool:
+        """检查书籍文件是否存在"""
+        return self.get_book_file(book_id) is not None
+
+    def delete_book_file(self, book_id: str) -> bool:
+        """删除书籍文件"""
+        deleted = False
+        for ext in ['epub', 'txt', 'pdf']:
+            file_path = self.base_dir / f"{book_id}.{ext}"
+            if file_path.exists():
+                file_path.unlink()
+                deleted = True
+        return deleted
+
+    # === Covers ===
+
+    def save_cover(self, book_id: str, image_bytes: bytes, ext: str) -> Optional[str]:
+        """保存封面图片"""
+        if not image_bytes:
+            return None
+        cover_path = self.covers_dir / f"{book_id}.{ext}"
+        with open(cover_path, 'wb') as f:
+            f.write(image_bytes)
+        return f"/api/covers/{book_id}.{ext}"
+
+    def get_cover_url(self, book_id: str, ext: str) -> Optional[str]:
+        """获取封面 URL"""
+        cover_path = self.covers_dir / f"{book_id}.{ext}"
+        if cover_path.exists():
+            return f"/api/covers/{book_id}.{ext}"
+        return None
+
+    def delete_cover(self, book_id: str) -> bool:
+        """删除封面"""
+        deleted = False
+        for ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            cover_path = self.covers_dir / f"{book_id}.{ext}"
+            if cover_path.exists():
+                cover_path.unlink()
+                deleted = True
+        return deleted
+
+    # === Chunks ===
+
+    def save_chunks(self, book_id: str, chunks: List[Chunk]) -> None:
+        """保存 chunks 到 JSON 文件"""
+        data = [
+            {
+                "id": c.id,
+                "text": c.text,
+                "chapter": c.chapter,
+                "order": c.order,
+            }
+            for c in chunks
+        ]
+        self._write_json(self._chunks_file(book_id), data)
+
+    def load_chunks(self, book_id: str) -> List[Chunk]:
+        """从 JSON 文件加载 chunks"""
+        try:
+            data = self._read_json(self._chunks_file(book_id))
+            if isinstance(data, list):
+                return [
+                    Chunk(
+                        id=item.get("id", ""),
+                        text=item.get("text", ""),
+                        chapter=item.get("chapter", ""),
+                        order=item.get("order", 0),
+                    )
+                    for item in data
+                ]
+            return []
+        except FileNotFoundError:
+            return []
+
+    def append_chunk(self, book_id: str, chunk: Chunk) -> None:
+        """追加单个 chunk"""
+        chunks = self.load_chunks(book_id)
+        chunks.append(chunk)
+        self.save_chunks(book_id, chunks)
+
+    # === Nodes ===
+
+    def save_nodes(self, book_id: str, nodes: List[NarrativeNode]) -> None:
+        """保存 nodes 到 JSON 文件"""
+        self._book_dir(book_id).mkdir(parents=True, exist_ok=True)
+        data = {"nodes": [node.to_dict() for node in nodes]}
+        self._write_json(self._nodes_file(book_id), data)
+
+    def load_nodes(self, book_id: str) -> List[NarrativeNode]:
+        """从 JSON 文件加载 nodes"""
+        try:
+            data = self._read_json(self._nodes_file(book_id))
+            if isinstance(data, dict):
+                nodes_list = data.get("nodes", [])
+            else:
+                nodes_list = data if isinstance(data, list) else []
+            return [NarrativeNode(**n) for n in nodes_list]
+        except FileNotFoundError:
+            return []
+
+    def append_node(self, book_id: str, node: NarrativeNode) -> None:
+        """追加单个 node"""
+        nodes = self.load_nodes(book_id)
+        nodes.append(node)
+        self.save_nodes(book_id, nodes)
+
+    def get_node(self, book_id: str, node_id: str) -> Optional[NarrativeNode]:
+        """根据 node_id 获取单个 node"""
+        nodes = self.load_nodes(book_id)
+        for n in nodes:
+            if n.id == node_id:
+                return n
+        return None
+
+    def get_nodes_by_chunk(self, book_id: str, chunk_id: str) -> List[NarrativeNode]:
+        """获取指定 chunk 的所有 nodes"""
+        nodes = self.load_nodes(book_id)
+        return [n for n in nodes if n.parent_chunk_id == chunk_id]
+
+    def get_nodes_by_thread(self, book_id: str, thread_id: str) -> List[NarrativeNode]:
+        """获取指定 thread 的所有 nodes"""
+        nodes = self.load_nodes(book_id)
+        return [n for n in nodes if n.thread_id == thread_id]
+
+    # === Bulk Operations ===
+
+    def node_exists(self, book_id: str, node_id: str) -> bool:
+        """检查 node 是否存在"""
+        return self.get_node(book_id, node_id) is not None
+
+    def clear_nodes(self, book_id: str) -> None:
+        """清空 nodes"""
+        self.save_nodes(book_id, [])
+
+    def clear_chunks(self, book_id: str) -> None:
+        """清空 chunks"""
+        self.save_chunks(book_id, [])
+
+    def cleanup_book_data(self, book_id: str) -> None:
+        """删除书籍所有相关文件"""
+        self.delete_book_file(book_id)
+        self.delete_cover(book_id)
+        book_dir = self._book_dir(book_id)
+        if book_dir.exists():
+            shutil.rmtree(book_dir)
+
+
+# Singleton instance
+book_storage = BookStorage()
