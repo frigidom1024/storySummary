@@ -3,34 +3,23 @@ import re
 import json
 import logging
 from typing import Optional
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.tools import tool
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
 from src.prompts import MULTI_BEAT_NODE_PROMPT
-from src.core.tools.node_query_tools import get_previous_chunk_nodes, get_thread_last_node, search_nodes
-from src.core.tools.tool_executor import TOOL_REGISTRY
-from langchain_core.messages import ToolMessage
+from src.core.tools.tool_executor import (
+    get_previous_chunk_nodes_impl,
+    get_thread_last_node_impl,
+    search_nodes_impl,
+)
 
 logger = logging.getLogger("story-summary")
 
 
-def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
-    """Create LLM client with DeepSeek, OpenAI, or DashScope compatibility."""
-    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
-
-    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
-    if api_base:
-        llm_kwargs["openai_api_base"] = api_base
-    elif "deepseek" in (model or "").lower():
-        # Auto-detect DeepSeek API base when using DeepSeek models
-        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
-
-    return ChatOpenAI(**llm_kwargs)
-
-
+# ====================== Pydantic Models (for test compatibility) ======================
 class CharacterStateModel(BaseModel):
     """Character state schema for structured output."""
     name: str = Field(description="Character name")
@@ -85,12 +74,63 @@ class NarrativeBeatsOutput(BaseModel):
     beats: list[NarrativeBeatModel] = Field(default_factory=list, description="List of narrative beats")
 
 
+def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
+    """Create LLM client with DeepSeek, OpenAI, or DashScope compatibility."""
+    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+
+    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
+    if api_base:
+        llm_kwargs["openai_api_base"] = api_base
+    elif "deepseek" in (model or "").lower():
+        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+
+    return ChatOpenAI(**llm_kwargs)
+
+
+# ====================== 工具 ======================
+def create_node_tools(book_id: str):
+    """Create tools bound to a specific book_id."""
+
+    @tool
+    def get_previous_chunk_nodes() -> str:
+        """Get all nodes from the previous chunk.
+
+        Use this to understand the time anchor (timeline_anchor) of the
+        chunk that came before the current one.
+        """
+        result = get_previous_chunk_nodes_impl(book_id=book_id)
+        return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def get_thread_last_node(thread_id: str) -> str:
+        """Get the last (newest) node in a given thread's chain.
+
+        Args:
+            thread_id: e.g. 'main', 'zhang', 'chenwei', 'laozhou'
+        """
+        result = get_thread_last_node_impl(book_id=book_id, thread_id=thread_id)
+        if result is None:
+            return "null"
+        return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def search_nodes(keyword: str) -> str:
+        """Search nodes by character name or scene keyword.
+
+        Args:
+            keyword: character name to search for
+        """
+        result = search_nodes_impl(book_id=book_id, keyword=keyword)
+        return json.dumps(result, ensure_ascii=False)
+
+    return [get_previous_chunk_nodes, get_thread_last_node, search_nodes]
+
+
 class NarrativeNodeGenerator:
     def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
-        self.book_id = book_id  # injected externally by pipeline
+        self.book_id = book_id
         self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
 
-        # 优先使用传入的 api_key，其次环境变量
         api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         api_base = os.getenv("DEEPSEEK_API_BASE")
 
@@ -99,11 +139,102 @@ class NarrativeNodeGenerator:
         else:
             self.llm = None
 
-        # Use JsonOutputParser which works with DeepSeek via prompt-based approach
-        self.output_parser = JsonOutputParser(pydantic_schema=NarrativeBeatsOutput)
+    def _extract_beats(self, content: str) -> list:
+        """Extract JSON beats list from response content."""
+        if not content:
+            return []
+
+        # Try direct JSON parse first
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                return parsed
+            if isinstance(parsed, dict) and 'beats' in parsed:
+                return parsed['beats']
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract JSON array from text
+        json_match = re.search(r'\[\s*\{[^}\]]*"id"\s*:[^}\]]*\}', content)
+        if json_match:
+            start = json_match.start()
+            depth = 0
+            for i, c in enumerate(content[start:]):
+                if c == '[':
+                    depth += 1
+                elif c == ']':
+                    depth -= 1
+                if depth == 0:
+                    try:
+                        parsed = json.loads(content[start:start+i+1])
+                        logger.debug(f"Extracted JSON array with {len(parsed)} items")
+                        return parsed
+                    except json.JSONDecodeError:
+                        pass
+
+        # Try reasoning field (qwen-plus model)
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and 'reasoning' in parsed:
+                reasoning_text = parsed['reasoning']
+                json_match = re.search(r'\[\s*\{\s*"id"\s*:', reasoning_text)
+                if json_match:
+                    start_idx = json_match.start()
+                    depth = 0
+                    end_idx = start_idx
+                    for i, c in enumerate(reasoning_text[start_idx:]):
+                        if c == '[':
+                            depth += 1
+                        elif c == ']':
+                            depth -= 1
+                        if depth == 0:
+                            end_idx = start_idx + i + 1
+                            break
+                    json_str = reasoning_text[start_idx:end_idx]
+                    return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+        logger.warning(f"Failed to extract beats from response: {content[:200]}")
+        return []
+
+    def _validate_beat(self, beat_dict: dict) -> Optional[dict]:
+        """Validate and normalize a beat dict."""
+        required_fields = ['id', 'beat_index', 'scene']
+        for field in required_fields:
+            if field not in beat_dict or beat_dict[field] is None:
+                logger.warning(f"Beat missing required field '{field}': {beat_dict.get('id', 'unknown')}")
+                return None
+
+        # Ensure defaults
+        beat_dict.setdefault('location', '')
+        beat_dict.setdefault('scene_timing', '')
+        beat_dict.setdefault('characters', [])
+        beat_dict.setdefault('situation', '')
+        beat_dict.setdefault('turning_point', '')
+        beat_dict.setdefault('emotional_arc', '')
+        beat_dict.setdefault('mood_tone', '')
+        beat_dict.setdefault('narrative_rhythm', 'steady')
+        beat_dict.setdefault('discussion_prompts', [])
+        beat_dict.setdefault('relationship_delta', [])
+        beat_dict.setdefault('narrative_role', 'rising')
+        beat_dict.setdefault('timeline_order', 0)
+        beat_dict.setdefault('timeline_anchor', '')
+        beat_dict.setdefault('is_time_jump', False)
+        beat_dict.setdefault('jump_direction', '')
+        beat_dict.setdefault('jump_label', '')
+        beat_dict.setdefault('thread_id', 'main')
+        beat_dict.setdefault('thread_name', '')
+        beat_dict.setdefault('thread_prev_node_id', '')
+        beat_dict.setdefault('thread_next_node_id', '')
+        beat_dict.setdefault('branch_from_node', '')
+        beat_dict.setdefault('converges_to_node', '')
+        beat_dict.setdefault('is_convergence', False)
+
+        return beat_dict
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
-        """Generate MULTIPLE narrative beats from ONE chunk using structured output + tool calling."""
+        """Generate narrative beats from ONE chunk using tool calling."""
         if self.llm is None:
             raise ValueError(
                 "LLM API Key 未配置。请设置 DEFAULT_API_KEY 和 DEFAULT_API_BASE 环境变量，"
@@ -114,170 +245,132 @@ class NarrativeNodeGenerator:
             text=chunk.text,
             chunk_order=chunk.order
         )
-        format_instructions = self.output_parser.get_format_instructions()
-        full_prompt = f"{prompt}\n\n{format_instructions}"
-
-        messages = [
-            SystemMessage(content="You are a narrative analyst. Use tools to gather context if needed, then output ONLY the JSON array of beats. No explanations, no text before or after the JSON. Start with [ and end with ]."),
-            HumanMessage(content=full_prompt)
-        ]
 
         logger.debug(f"Calling LLM for chunk {chunk.id} (model: {self.model_name})")
 
-        # Bind tools - model may call them before outputting JSON
-        llm_with_tools = self.llm.bind_tools(
-            [get_previous_chunk_nodes, get_thread_last_node, search_nodes],
-            parallel_tool_calls=False
-        )
+        # Create tools bound to this book_id
+        tools = create_node_tools(self.book_id)
 
-        response = await llm_with_tools.ainvoke(messages)
+        # Bind tools to LLM
+        llm_with_tools = self.llm.bind_tools(tools)
 
-        # Tool call loop - execute tools and continue
-        max_calls = 3
-        call_count = 0
-        while hasattr(response, 'tool_calls') and response.tool_calls and call_count < max_calls:
-            call_count += 1
-            # Handle both list of ToolCall objects and list of dicts
-            tool_calls = response.tool_calls
-            for tc in tool_calls:
-                tc_name = tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', None)
-                tc_id = tc.get('id') if isinstance(tc, dict) else getattr(tc, 'id', None)
-                tc_args = tc.get('args') if isinstance(tc, dict) else getattr(tc, 'args', {})
+        # Build initial messages
+        messages = [
+            SystemMessage(content="You are a professional narrative analyst. Use tools to gather context if needed, then output ONLY the JSON array of beats. No explanations, no text before or after the JSON. Start with [ and end with ]."),
+            HumanMessage(content=prompt)
+        ]
 
-                logger.debug(f"Tool call {call_count}: {tc_name} with args: {tc_args}")
-                impl = TOOL_REGISTRY.get(tc_name)
-                if impl:
-                    try:
-                        # Always use self.book_id, but pass through other args
-                        merged_args = dict(tc_args)
-                        merged_args['book_id'] = self.book_id
-                        result = impl(**merged_args)
-                    except Exception as e:
-                        result = {"error": str(e)}
-                        logger.warning(f"Tool {tc_name} failed: {e}")
-                else:
-                    result = {"error": f"unknown tool: {tc_name}"}
-                messages.append(ToolMessage(
-                    name=tc_name,
-                    content=json.dumps(result, ensure_ascii=False),
-                    tool_call_id=tc_id
-                ))
+        # Tool call loop with proper message handling
+        max_tool_calls = 5
+        for call_round in range(max_tool_calls):
+            logger.debug(f"LLM call round {call_round + 1}")
+
+            # Invoke LLM
             response = await llm_with_tools.ainvoke(messages)
 
-        if hasattr(response, 'tool_calls') and response.tool_calls and call_count >= max_calls:
-            logger.warning(f"Max tool calls ({max_calls}) reached, proceeding with response")
+            # Check if response has tool_calls
+            if not hasattr(response, 'tool_calls') or not response.tool_calls:
+                # No tool calls - this is the final response
+                break
 
-        try:
-            parsed = self.output_parser.parse(response.content)
-        except Exception as e:
-            # Try to extract JSON from response that has thinking text before JSON
-            logger.debug(f"Initial parse failed: {e}, trying to extract JSON from response")
-            content = response.content if hasattr(response, 'content') else str(response)
-            json_match = re.search(r'\[\s*\{[^}\]]*"id"\s*:[^}\]]*\}', content)
-            if json_match:
-                # Found potential JSON, try to extract full array
-                start = json_match.start()
-                depth = 0
-                for i, c in enumerate(content[start:]):
-                    if c == '[':
-                        depth += 1
-                    elif c == ']':
-                        depth -= 1
-                    if depth == 0:
-                        try:
-                            parsed = json.loads(content[start:start+i+1])
-                            logger.debug(f"Successfully extracted JSON array with {len(parsed)} items")
-                            break
-                        except:
-                            pass
+            # Process tool calls and add responses to messages
+            for tc in response.tool_calls:
+                # Get tool name and arguments
+                if isinstance(tc, dict):
+                    tc_name = tc.get('name')
+                    tc_id = tc.get('id')
+                    tc_args = tc.get('args', {})
                 else:
-                    parsed = None
-            if parsed is None:
-                logger.warning(f"Failed to parse LLM response as JSON: {e}")
-                return []
+                    tc_name = getattr(tc, 'name', None)
+                    tc_id = getattr(tc, 'id', None)
+                    tc_args = getattr(tc, 'args', {})
 
-        # parsed can be a list directly or dict with 'beats' key
-        # Handle qwen-plus reasoning field case
-        if parsed is None:
-            beats_list = []
-        elif isinstance(parsed, list):
-            beats_list = parsed
-        else:
-            beats_list = parsed.get('beats', [])
+                if not tc_name:
+                    logger.warning(f"Skipping tool call with no name")
+                    continue
 
-        # If beats_list is empty but we have a 'reasoning' field, try to extract JSON from it
-        if not beats_list and isinstance(parsed, dict) and 'reasoning' in parsed:
-            reasoning_text = parsed['reasoning']
-            logger.debug(f"Found reasoning field, attempting to extract JSON from it (first 300 chars): {reasoning_text[:300]}")
-            # Try to find JSON array containing beats - look for pattern starting with [{"id":
-            json_match = re.search(r'\[\s*\{\s*"id"\s*:', reasoning_text)
-            if json_match:
-                # Found start of JSON array, now find the matching closing bracket
-                start_idx = json_match.start()
-                # Count brackets to find the matching end
-                depth = 0
-                end_idx = start_idx
-                for i, c in enumerate(reasoning_text[start_idx:]):
-                    if c == '[':
-                        depth += 1
-                    elif c == ']':
-                        depth -= 1
-                    if depth == 0:
-                        end_idx = start_idx + i + 1
-                        break
-                json_str = reasoning_text[start_idx:end_idx]
-                logger.debug(f"Extracted JSON candidate (first 100 chars): {json_str[:100]}")
-                try:
-                    beats_list = json.loads(json_str)
-                    logger.debug(f"Successfully extracted {len(beats_list)} beats from reasoning")
-                except Exception as e:
-                    logger.debug(f"Failed to parse JSON from reasoning: {e}, json_str: {json_str[:100]}")
-        logger.debug(f"Parsed response: {str(parsed)[:300]}, beats_list length: {len(beats_list)}")
+                # Find and execute the tool
+                tool_def = next((t for t in tools if t.name == tc_name), None)
+                if not tool_def:
+                    logger.warning(f"Tool {tc_name} not found in registry")
+                    content = json.dumps({"error": f"unknown tool: {tc_name}"}, ensure_ascii=False)
+                else:
+                    try:
+                        result = tool_def.invoke(tc_args)
+                        content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+                    except Exception as e:
+                        logger.warning(f"Tool {tc_name} failed: {e}")
+                        content = json.dumps({"error": str(e)}, ensure_ascii=False)
 
+                # Add tool response as a HumanMessage (not ToolMessage)
+                # This is because DeepSeek API expects tool responses as HumanMessage
+                tool_msg = HumanMessage(
+                    content=content,
+                    name=tc_name,
+                    tool_call_id=tc_id
+                )
+                messages.append(tool_msg)
+
+            logger.debug(f"Executed {len(response.tool_calls)} tool(s), continuing...")
+
+        # Get the final response content
+        content = ""
+        if hasattr(response, 'content') and response.content:
+            content = response.content
+
+        # Parse beats from content
+        beats_list = self._extract_beats(content)
+        logger.debug(f"Extracted {len(beats_list)} beats from response")
+
+        # Convert to NarrativeNode objects
         nodes = []
         for beat_dict in beats_list:
-            try:
-                beat_data = NarrativeBeatModel.model_validate(beat_dict)
-            except Exception:
-                logger.warning(f"Skipping invalid beat: {beat_dict.get('id', 'unknown')}")
+            validated = self._validate_beat(beat_dict)
+            if not validated:
                 continue
 
             valid_characters = [
-                CharacterState(name=c.name, state_before=c.state_before)
-                for c in beat_data.characters if c.name
+                CharacterState(name=c.get('name', ''), state_before=c.get('state_before', ''))
+                for c in validated['characters'] if c.get('name')
+            ]
+
+            relationship_delta = [
+                RelationshipStateChange(
+                    pair=r.get('pair', ''),
+                    from_state=r.get('from_state', ''),
+                    to_state=r.get('to_state', '')
+                )
+                for r in validated['relationship_delta'] if r.get('pair')
             ]
 
             node = NarrativeNode(
-                id=beat_data.id,
+                id=validated['id'],
                 parent_chunk_id=chunk.id,
-                beat_index=beat_data.beat_index,
-                scene=beat_data.scene,
-                location=beat_data.location,
-                scene_timing=beat_data.scene_timing,
+                beat_index=validated['beat_index'],
+                scene=validated['scene'],
+                location=validated['location'],
+                scene_timing=validated['scene_timing'],
                 characters=valid_characters,
-                situation=beat_data.situation,
-                turning_point=beat_data.turning_point,
-                emotional_arc=beat_data.emotional_arc,
-                mood_tone=beat_data.mood_tone,
-                narrative_rhythm=beat_data.narrative_rhythm,
-                discussion_prompts=beat_data.discussion_prompts,
-                relationship_delta=[
-                    RelationshipStateChange(pair=r.pair, from_state=r.from_state, to_state=r.to_state)
-                    for r in beat_data.relationship_delta if r.pair
-                ],
-                narrative_role=beat_data.narrative_role,
-                timeline_order=beat_data.timeline_order,
-                timeline_anchor=beat_data.timeline_anchor,
-                is_time_jump=beat_data.is_time_jump,
-                jump_direction=beat_data.jump_direction,
-                jump_label=beat_data.jump_label,
-                thread_id=beat_data.thread_id or "main",
-                thread_name=beat_data.thread_name,
-                thread_prev_node_id=beat_data.thread_prev_node_id,
-                thread_next_node_id=beat_data.thread_next_node_id,
-                branch_from_node=beat_data.branch_from_node,
-                converges_to_node=beat_data.converges_to_node,
-                is_convergence=beat_data.is_convergence,
+                situation=validated['situation'],
+                turning_point=validated['turning_point'],
+                emotional_arc=validated['emotional_arc'],
+                mood_tone=validated['mood_tone'],
+                narrative_rhythm=validated['narrative_rhythm'],
+                discussion_prompts=validated['discussion_prompts'],
+                relationship_delta=relationship_delta,
+                narrative_role=validated['narrative_role'],
+                timeline_order=validated['timeline_order'],
+                timeline_anchor=validated['timeline_anchor'],
+                is_time_jump=validated['is_time_jump'],
+                jump_direction=validated['jump_direction'],
+                jump_label=validated['jump_label'],
+                thread_id=validated['thread_id'],
+                thread_name=validated['thread_name'],
+                thread_prev_node_id=validated['thread_prev_node_id'],
+                thread_next_node_id=validated['thread_next_node_id'],
+                branch_from_node=validated['branch_from_node'],
+                converges_to_node=validated['converges_to_node'],
+                is_convergence=validated['is_convergence'],
             )
             nodes.append(node)
 

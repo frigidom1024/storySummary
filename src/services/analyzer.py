@@ -11,7 +11,10 @@ from src.storage.vector_store import VectorStore
 from src.storage.json_storage import JsonStorage
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
+import logging
 from src.logging_config import debug
+
+logger = logging.getLogger("story-summary")
 
 
 class Analyzer:
@@ -85,8 +88,19 @@ class Analyzer:
                     nodes = [nodes] if nodes else []
                 debug("node_generator", "book_id={} chunk={} generated {} nodes", book_id, i, len(nodes))
             except Exception as e:
-                debug("node_generator", "book_id={} chunk={} error={}", book_id, i, str(e))
-                error_msg = f"第 {i+1} 章分析失败: {str(e)}"
+                logger.error(f"[节点生成失败] book_id={book_id} chunk={i+1}/{total_chunks}", exc_info=True)
+                # Sanitize API errors for user-facing messages
+                error_str = str(e)
+                if "400" in error_str or "invalid_request_error" in error_str or "tool_calls" in error_str:
+                    error_msg = f"第 {i+1} 章分析失败: 服务器内部错误，请稍后重试"
+                elif "401" in error_str or "authentication" in error_str.lower() or "api_key" in error_str.lower():
+                    error_msg = f"第 {i+1} 章分析失败: API认证失败，请检查配置"
+                elif "429" in error_str or "rate_limit" in error_str.lower():
+                    error_msg = f"第 {i+1} 章分析失败: 请求频率过高，请稍后重试"
+                elif "timeout" in error_str.lower() or "timed out" in error_str.lower():
+                    error_msg = f"第 {i+1} 章分析失败: 请求超时，请稍后重试"
+                else:
+                    error_msg = f"第 {i+1} 章分析失败: 服务器内部错误，请稍后重试"
                 await report(80, f"错误: {error_msg}")
                 self.db.update_book_status(book_id, "failed")
                 return {

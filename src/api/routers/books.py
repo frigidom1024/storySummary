@@ -179,7 +179,9 @@ async def _run_analysis(book_id: str):
     async def progress_callback(progress: int, message: str):
         print(f"[progress_callback] book_id={book_id} progress={progress} message={message}", file=sys.stderr, flush=True)
         debug("progress", "book_id={} progress={} message={}", book_id, progress, message)
-        await manager.send_progress(book_id, progress, message)
+        # Auto-determine status based on progress
+        status = "completed" if progress == 100 else "processing"
+        await manager.send_progress(book_id, progress, message, status)
 
     try:
         print(f"[_run_analysis] Creating Analyzer for book_id={book_id}", file=sys.stderr, flush=True)
@@ -399,10 +401,10 @@ async def _run_manuscript_generation(
     from src.generation.pipeline import ManuscriptPipeline
 
     async def progress_callback(progress: int, message: str):
-        await manager.send_progress(book_id, progress, message, "processing")
+        await manager.send_progress(book_id, progress, message, "processing", "manuscript")
 
     try:
-        await manager.send_progress(book_id, 0, "正在启动生成...", "processing")
+        await manager.send_progress(book_id, 0, "正在启动生成...", "processing", "manuscript")
 
         pipeline = ManuscriptPipeline(
             style_key=style_key,
@@ -417,12 +419,14 @@ async def _run_manuscript_generation(
             book_id,
             100,
             f"生成完成！共 {result.chapters_written} 章",
-            "completed"
+            "completed",
+            "manuscript"
         )
     except Exception as e:
         await manager.send_progress(
             book_id,
             0,
             f"生成失败: {str(e)}",
-            "failed"
+            "failed",
+            "manuscript"
         )

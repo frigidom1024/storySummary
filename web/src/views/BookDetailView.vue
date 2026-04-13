@@ -205,7 +205,7 @@ const manuscriptOptions = ref({
 const isGeneratingManuscript = ref(false)
 const manuscriptResult = ref<ManuscriptResponse | null>(null)
 const manuscriptError = ref<string | null>(null)
-const manuscriptProgress = ref<{ progress: number; message: string; status: string } | null>(null)
+const manuscriptProgress = ref<{ progress: number; message: string; status: string; type?: string } | null>(null)
 let manuscriptFetchRetries = 0
 const MAX_MANUSCRIPT_RETRIES = 3
 
@@ -320,8 +320,9 @@ function connectWebSocket() {
     try {
       const data = JSON.parse(event.data)
 
-      // 处理口播稿生成进度
-      if (isGeneratingManuscript.value) {
+      // 根据 type 字段路由消息
+      if (data.type === 'manuscript') {
+        // 口播稿生成进度
         manuscriptProgress.value = data
 
         if (data.status === 'completed') {
@@ -334,7 +335,7 @@ function connectWebSocket() {
         return
       }
 
-      // 处理书籍分析进度
+      // 书籍分析进度（type 为 'analyze' 或无 type 字段）
       wsProgress.value = data
       pageState.updateProgress(data.progress, data.message)
 

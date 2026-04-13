@@ -1,7 +1,7 @@
 """WebSocket connection manager for real-time progress updates."""
 from fastapi import WebSocket
 from typing import Dict, Set
-import json
+from src.api.schemas.websocket import ProgressMessage, ProgressStatus, ProgressType
 from src.logging_config import debug
 
 
@@ -31,17 +31,29 @@ class ConnectionManager:
                 del self.connections[book_id]
                 debug("websocket", "book_id={} All connections closed, removed from tracker", book_id)
 
-    async def send_progress(self, book_id: str, progress: int, message: str, status: str = "processing"):
-        """Send progress update to all clients watching this book."""
-        debug("websocket", "book_id={} send_progress progress={} message={} status={}", book_id, progress, message, status)
+    async def send_progress(self, book_id: str, progress: int, message: str, status: str = "processing", type: str = "analyze"):
+        """Send progress update to all clients watching this book.
+
+        Args:
+            book_id: 书籍 ID
+            progress: 进度 0-100
+            message: 状态描述
+            status: processing | completed | failed
+            type: analyze | manuscript
+        """
+        debug("websocket", "book_id={} send_progress progress={} message={} status={} type={}", book_id, progress, message, status, type)
         if book_id not in self.connections:
             debug("websocket", "book_id={} No connections found, skipping send", book_id)
             return
-        payload = json.dumps({
-            "progress": progress,
-            "message": message,
-            "status": status
-        })
+
+        # Validate and serialize via schema
+        progress_msg = ProgressMessage(
+            progress=progress,
+            message=message,
+            status=ProgressStatus(status),
+            type=ProgressType(type)
+        )
+        payload = progress_msg.model_dump_json()
         debug("websocket", "book_id={} payload={}", book_id, payload)
         disconnected = set()
         for websocket in self.connections[book_id]:
