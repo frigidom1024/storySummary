@@ -4,18 +4,18 @@ from typing import List, Optional
 from src.models.book import Book
 from src.services.interfaces import IBookService
 from src.storage.database import Database
-from src.storage.path_builder import PathBuilder
+from src.storage.book_storage import BookStorage
 
 
 class BookService(IBookService):
-    def __init__(self, db: Database, path_builder: PathBuilder):
+    def __init__(self, db: Database, book_storage: BookStorage = None):
         self.db = db
-        self.path_builder = path_builder
+        self.book_storage = book_storage or BookStorage()
 
     def create_book(self, user_id: str, title: str) -> Book:
         """创建书籍"""
         book_id = str(uuid.uuid4())
-        nodes_file_path = self.path_builder.build_nodes_file(user_id, book_id)
+        nodes_file_path = f"data/books/{book_id}"  # BookStorage 内部管理路径
         book = Book(
             id=book_id,
             user_id=user_id,

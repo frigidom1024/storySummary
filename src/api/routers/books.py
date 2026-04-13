@@ -15,8 +15,8 @@ from src.services.analyzer import Analyzer
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.epub_parser import parse_epub
-from src.storage.database import Database
-from src.storage.file_manager import file_manager
+from src.storage.book_storage import BookStorage
+from src.api.deps import get_book_storage
 from src.api.exceptions import (
     NotFoundError, AuthorizationError, ValidationError,
     FileTooLargeError, UnsupportedFileTypeError, InvalidFileError, EncodingError
@@ -34,6 +34,7 @@ async def upload_book(
     publisher: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service)
+    book_storage: BookStorage = Depends(get_book_storage)
 ):
     """上传 epub 或 txt 文件创建书籍。"""
     # 文件类型检查
@@ -108,11 +109,11 @@ async def upload_book(
     print(f"[upload] Generated book_id={book_id} ext={ext}", file=sys.stderr, flush=True)
 
     # 保存文件
-    file_manager.save_book_file(book_id, file_bytes, ext)
+    book_storage.save_book_file(book_id, file_bytes, ext)
     print(f"[upload] File saved: data/{book_id}.{ext} exists={os.path.exists(f'data/{book_id}.{ext}')}", file=sys.stderr, flush=True)
 
     # 保存封面
-    cover_url = file_manager.save_cover(book_id, cover_image, cover_extension) if cover_image else None
+    cover_url = book_storage.save_cover(book_id, cover_image, cover_extension) if cover_image else None
 
     # 创建书籍记录
     new_book = book_service.create_book_object(
@@ -157,7 +158,7 @@ async def analyze_book(
     book_service.update_book_status(book_id, "processing")
 
     # 检查文件是否存在
-    if not file_manager.book_file_exists(book_id):
+    if not book_storage.book_file_exists(book_id):
         debug("books", "Book file not found for book_id={}", book_id)
         book_service.update_book_status(book_id, "failed", "书籍文件不存在，请重新上传")
         raise NotFoundError("书籍文件不存在，请重新上传")
@@ -187,8 +188,9 @@ async def _run_analysis(book_id: str):
         print(f"[_run_analysis] Creating Analyzer for book_id={book_id}", file=sys.stderr, flush=True)
         analyzer = Analyzer()
 
-        # 使用 FileManager 查找文件
-        book_file = file_manager.get_book_file(book_id)
+        # 使用 BookStorage 查找文件
+        book_storage = get_book_storage()
+        book_file = book_storage.get_book_file(book_id)
         if not book_file:
             print(f"[_run_analysis] Book file NOT FOUND for book_id={book_id}", file=sys.stderr, flush=True)
             debug("books", "Book file not found for book_id={}", book_id)
@@ -260,7 +262,8 @@ def get_book(
 def delete_book(
     book_id: str,
     user_id: str = Depends(get_current_user_id),
-    book_service: BookService = Depends(get_book_service)
+    book_service: BookService = Depends(get_book_service),
+    book_storage: BookStorage = Depends(get_book_storage)
 ):
     """删除书籍"""
     book = book_service.get_book(book_id)
@@ -270,7 +273,7 @@ def delete_book(
         raise AuthorizationError("无权删除此书籍")
 
     # 清理文件
-    file_manager.cleanup_book_data(book_id)
+    book_storage.cleanup_book_data(book_id)
 
     # 删除数据库记录
     book_service.delete_book(book_id)
