@@ -24,6 +24,7 @@ class NarrativeNode(BaseModel):
     characters: list[CharacterState] = Field(default_factory=list)
     situation: str = ""
     turning_point: str = ""
+    importance: int = Field(default=1, description="节点重要性: 1=普通, 2=重要, 3=关键")
     emotional_arc: str = ""
     mood_tone: str = ""
     narrative_rhythm: str = ""

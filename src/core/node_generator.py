@@ -10,11 +10,14 @@ from langchain_core.tools import tool
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
 from src.prompts import MULTI_BEAT_NODE_PROMPT
+from src.prompts.base_node import BASE_NODE_PROMPT
+from src.prompts.storyline import STORYLINE_ORGANIZER_PROMPT
 from src.core.tools.tool_executor import (
     get_previous_chunk_nodes_impl,
     get_thread_last_node_impl,
     search_nodes_impl,
 )
+from src.logging_config import debug
 
 logger = logging.getLogger("story-summary")
 
@@ -99,6 +102,8 @@ def create_node_tools(book_id: str):
         chunk that came before the current one.
         """
         result = get_previous_chunk_nodes_impl(book_id=book_id)
+        if not result:
+            return "[] /* This is the first chunk - no previous nodes exist. Proceed to generate beats with default timeline. */"
         return json.dumps(result, ensure_ascii=False)
 
     @tool
@@ -110,7 +115,7 @@ def create_node_tools(book_id: str):
         """
         result = get_thread_last_node_impl(book_id=book_id, thread_id=thread_id)
         if result is None:
-            return "null"
+            return "null /* No previous nodes in this thread. Start a new thread with thread_id='" + thread_id + "' */"
         return json.dumps(result, ensure_ascii=False)
 
     @tool
@@ -167,7 +172,7 @@ class NarrativeNodeGenerator:
                 if depth == 0:
                     try:
                         parsed = json.loads(content[start:start+i+1])
-                        logger.debug(f"Extracted JSON array with {len(parsed)} items")
+                        debug("node_generator", "Extracted JSON array with {} items", len(parsed))
                         return parsed
                     except json.JSONDecodeError:
                         pass
@@ -212,6 +217,7 @@ class NarrativeNodeGenerator:
         beat_dict.setdefault('characters', [])
         beat_dict.setdefault('situation', '')
         beat_dict.setdefault('turning_point', '')
+        beat_dict.setdefault('importance', 1)
         beat_dict.setdefault('emotional_arc', '')
         beat_dict.setdefault('mood_tone', '')
         beat_dict.setdefault('narrative_rhythm', 'steady')
@@ -246,7 +252,7 @@ class NarrativeNodeGenerator:
             chunk_order=chunk.order
         )
 
-        logger.debug(f"Calling LLM for chunk {chunk.id} (model: {self.model_name})")
+        debug("node_generator", "Calling LLM for chunk {} model={}", chunk.id, self.model_name)
 
         # Create tools bound to this book_id
         tools = create_node_tools(self.book_id)
@@ -261,17 +267,23 @@ class NarrativeNodeGenerator:
         ]
 
         # Tool call loop with proper message handling
-        max_tool_calls = 5
+        max_tool_calls = 4
         for call_round in range(max_tool_calls):
-            logger.debug(f"LLM call round {call_round + 1}")
+            debug("node_generator", "LLM call round {} messages count={}", call_round + 1, len(messages))
 
             # Invoke LLM
             response = await llm_with_tools.ainvoke(messages)
 
+            # Get content for logging
+            content = response.content if hasattr(response, 'content') and response.content else ""
+            debug("node_generator", "Response content (first 200 chars): {}", content[:200])
+
             # Check if response has tool_calls
             if not hasattr(response, 'tool_calls') or not response.tool_calls:
-                # No tool calls - this is the final response
+                debug("node_generator", "No tool calls in response, breaking")
                 break
+
+            debug("node_generator", "Tool calls: {}", len(response.tool_calls))
 
             # Process tool calls and add responses to messages
             for tc in response.tool_calls:
@@ -286,24 +298,26 @@ class NarrativeNodeGenerator:
                     tc_args = getattr(tc, 'args', {})
 
                 if not tc_name:
-                    logger.warning(f"Skipping tool call with no name")
+                    debug("node_generator", "Skipping tool call with no name")
                     continue
+
+                debug("node_generator", "Executing tool: {} args={}", tc_name, tc_args)
 
                 # Find and execute the tool
                 tool_def = next((t for t in tools if t.name == tc_name), None)
                 if not tool_def:
-                    logger.warning(f"Tool {tc_name} not found in registry")
+                    debug("node_generator", "Tool {} not found", tc_name)
                     content = json.dumps({"error": f"unknown tool: {tc_name}"}, ensure_ascii=False)
                 else:
                     try:
                         result = tool_def.invoke(tc_args)
                         content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+                        debug("node_generator", "Tool {} returned: {}...", tc_name, content[:100])
                     except Exception as e:
-                        logger.warning(f"Tool {tc_name} failed: {e}")
+                        debug("node_generator", "Tool {} failed: {}", tc_name, e)
                         content = json.dumps({"error": str(e)}, ensure_ascii=False)
 
-                # Add tool response as a HumanMessage (not ToolMessage)
-                # This is because DeepSeek API expects tool responses as HumanMessage
+                # Add tool response as a HumanMessage
                 tool_msg = HumanMessage(
                     content=content,
                     name=tc_name,
@@ -311,16 +325,17 @@ class NarrativeNodeGenerator:
                 )
                 messages.append(tool_msg)
 
-            logger.debug(f"Executed {len(response.tool_calls)} tool(s), continuing...")
+            debug("node_generator", "Executed {} tool(s), continuing", len(response.tool_calls))
 
         # Get the final response content
-        content = ""
+        final_content = ""
         if hasattr(response, 'content') and response.content:
-            content = response.content
+            final_content = response.content
+            debug("node_generator", "Final response content length={}", len(final_content))
 
-        # Parse beats from content
-        beats_list = self._extract_beats(content)
-        logger.debug(f"Extracted {len(beats_list)} beats from response")
+        # Parse beats from final content
+        beats_list = self._extract_beats(final_content)
+        debug("node_generator", "Extracted {} beats", len(beats_list))
 
         # Convert to NarrativeNode objects
         nodes = []
@@ -353,6 +368,7 @@ class NarrativeNodeGenerator:
                 characters=valid_characters,
                 situation=validated['situation'],
                 turning_point=validated['turning_point'],
+                importance=validated['importance'],
                 emotional_arc=validated['emotional_arc'],
                 mood_tone=validated['mood_tone'],
                 narrative_rhythm=validated['narrative_rhythm'],
