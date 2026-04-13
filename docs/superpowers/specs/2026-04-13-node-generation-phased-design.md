@@ -18,12 +18,16 @@
 ```
 chunk[N] → Agent1 → nodes (content)
                 ↓
-         Agent2 → time_type + anchor_hint
+         [Agent2] → time_type + anchor_hint (可选)
                 ↓
-         Agent3 → thread_id + prev_node_id
+         [Agent3] → thread_id + prev_node_id (可选)
+                ↓
+         CharacterTracker → 人物卡片 + 关系图 + 情绪轨迹
                 ↓
          程序 merge → 完整节点
 ```
+
+**说明：** Agent2 和 Agent3 可通过配置开关选择是否启用。关闭时，相关字段由程序使用默认值或跳过。
 
 ---
 
@@ -276,15 +280,17 @@ prev_node = find_last_node_in_thread(thread_id, recent_nodes)
 - 扩展输出包含 `interactions` 字段
 - 添加 `last_nodes` 上下文输入
 
-### 第二步：Agent2（新增）
+### 第二步：Agent2（可选）
 - 新建 `TimeAnchorResolver` 类
 - 设计 prompt，关注 `time_type` 和 `relative_to_prev`
 - 处理 chunk 级所有节点（批量，保证一致性）
+- **默认开启，可配置关闭**
 
-### 第三步：Agent3（混合）
+### 第三步：Agent3（可选，混合）
 - 新建 `GraphBuilder` 类
 - LLM 部分：轻量 thread_hint
 - 程序部分：thread 分配、prev_node 连接、timeline_order 计算
+- **默认开启，可配置关闭**
 
 ### 第四步：CharacterTracker（新增）
 - 新建 `CharacterTracker` 类
