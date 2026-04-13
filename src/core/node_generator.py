@@ -2,16 +2,18 @@ import os
 import re
 import json
 import logging
+from dataclasses import dataclass
 from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from src.models.chunk import Chunk
-from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
-from src.prompts import MULTI_BEAT_NODE_PROMPT
+from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange, InteractionModel
 from src.prompts.base_node import BASE_NODE_PROMPT
-from src.prompts.storyline import STORYLINE_ORGANIZER_PROMPT
+from src.core.time_anchor_resolver import TimeAnchorResolver
+from src.core.graph_builder import GraphBuilder
+from src.core.character_tracker import CharacterTracker
 from src.core.tools.tool_executor import (
     get_previous_chunk_nodes_impl,
     get_thread_last_node_impl,
@@ -20,6 +22,19 @@ from src.core.tools.tool_executor import (
 from src.logging_config import debug
 
 logger = logging.getLogger("story-summary")
+
+
+@dataclass
+class PipelineConfig:
+    enable_agent2_agent3: bool = True
+    enable_character_tracker: bool = True
+
+    @classmethod
+    def from_env(cls) -> "PipelineConfig":
+        return cls(
+            enable_agent2_agent3=os.getenv("ENABLE_AGENT2_AGENT3", "true").lower() == "true",
+            enable_character_tracker=os.getenv("ENABLE_CHARACTER_TRACKER", "true").lower() == "true",
+        )
 
 
 # ====================== Pydantic Models (for test compatibility) ======================
@@ -34,6 +49,12 @@ class RelationshipStateChangeModel(BaseModel):
     pair: str = Field(default="", description="Pair name e.g. '陈屿-沈昭'")
     from_state: str = Field(default="", description="State before")
     to_state: str = Field(default="", description="State after")
+
+
+class InteractionModelCompat(BaseModel):
+    target: str = Field(default="", description="Target character name")
+    type: str = Field(default="neutral", description="tension/support/neutral")
+    intensity_delta: float = Field(default=0.0, description="-1.0 to 1.0")
 
 
 class NarrativeBeatModel(BaseModel):
@@ -51,6 +72,7 @@ class NarrativeBeatModel(BaseModel):
     narrative_rhythm: str = Field(default="", description="slow / steady / fast / pause")
     discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
     relationship_delta: list[RelationshipStateChangeModel] = Field(default_factory=list, description="Relationship changes in this beat")
+    interactions: list[InteractionModelCompat] = Field(default_factory=list, description="Character interactions")
     narrative_role: str = Field(default="", description="opening / rising / climax / ending")
 
     # === 时间坐标 ===
@@ -135,6 +157,11 @@ class NarrativeNodeGenerator:
     def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
         self.book_id = book_id
         self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
+        self.pipeline_config = PipelineConfig.from_env()
+        self.time_anchor_resolver = TimeAnchorResolver(api_key=api_key)
+        self.graph_builder = GraphBuilder(api_key=api_key)
+        self.character_tracker = CharacterTracker()
+        self.last_character_data: dict = {}
 
         api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         api_base = os.getenv("DEEPSEEK_API_BASE")
@@ -217,12 +244,13 @@ class NarrativeNodeGenerator:
         beat_dict.setdefault('characters', [])
         beat_dict.setdefault('situation', '')
         beat_dict.setdefault('turning_point', '')
-        beat_dict.setdefault('importance', 1)
+        beat_dict.setdefault('importance', 0.5)
         beat_dict.setdefault('emotional_arc', '')
         beat_dict.setdefault('mood_tone', '')
         beat_dict.setdefault('narrative_rhythm', 'steady')
         beat_dict.setdefault('discussion_prompts', [])
         beat_dict.setdefault('relationship_delta', [])
+        beat_dict.setdefault('interactions', [])
         beat_dict.setdefault('narrative_role', 'rising')
         beat_dict.setdefault('timeline_order', 0)
         beat_dict.setdefault('timeline_anchor', '')
@@ -237,6 +265,13 @@ class NarrativeNodeGenerator:
         beat_dict.setdefault('converges_to_node', '')
         beat_dict.setdefault('is_convergence', False)
 
+        # normalize importance to 0.0-1.0
+        try:
+            beat_dict['importance'] = float(beat_dict['importance'])
+        except (TypeError, ValueError):
+            beat_dict['importance'] = 0.5
+        beat_dict['importance'] = max(0.0, min(1.0, beat_dict['importance']))
+
         return beat_dict
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
@@ -247,9 +282,10 @@ class NarrativeNodeGenerator:
                 "或配置 DEEPSEEK_API_KEY / OPENAI_API_KEY 环境变量。"
             )
 
-        prompt = MULTI_BEAT_NODE_PROMPT.format(
+        prompt = BASE_NODE_PROMPT.format(
             text=chunk.text,
-            chunk_order=chunk.order
+            chunk_order=chunk.order,
+            last_nodes=""
         )
 
         debug("node_generator", "Calling LLM for chunk {} model={}", chunk.id, self.model_name)
@@ -337,12 +373,27 @@ class NarrativeNodeGenerator:
         beats_list = self._extract_beats(final_content)
         debug("node_generator", "Extracted {} beats", len(beats_list))
 
-        # Convert to NarrativeNode objects
-        nodes = []
+        validated_beats: list[dict] = []
         for beat_dict in beats_list:
             validated = self._validate_beat(beat_dict)
             if not validated:
                 continue
+            validated_beats.append(validated)
+
+        if self.pipeline_config.enable_agent2_agent3 and validated_beats:
+            time_anchors = await self.time_anchor_resolver.resolve(validated_beats, last_timeline_state={})
+            validated_beats = await self.graph_builder.build(validated_beats, time_anchors)
+
+        if self.pipeline_config.enable_character_tracker and validated_beats:
+            self.character_tracker.process_nodes(validated_beats)
+            self.last_character_data = {
+                "characters": self.character_tracker.get_all_characters(),
+                "relationship_graph": self.character_tracker.get_relationship_graph(),
+            }
+
+        # Convert to NarrativeNode objects
+        nodes = []
+        for validated in validated_beats:
 
             valid_characters = [
                 CharacterState(name=c.get('name', ''), state_before=c.get('state_before', ''))
@@ -356,6 +407,15 @@ class NarrativeNodeGenerator:
                     to_state=r.get('to_state', '')
                 )
                 for r in validated['relationship_delta'] if r.get('pair')
+            ]
+
+            interactions = [
+                InteractionModel(
+                    target=i.get("target", ""),
+                    type=i.get("type", "neutral"),
+                    intensity_delta=float(i.get("intensity_delta", 0.0)),
+                )
+                for i in validated.get("interactions", []) if i.get("target")
             ]
 
             node = NarrativeNode(
@@ -374,6 +434,7 @@ class NarrativeNodeGenerator:
                 narrative_rhythm=validated['narrative_rhythm'],
                 discussion_prompts=validated['discussion_prompts'],
                 relationship_delta=relationship_delta,
+                interactions=interactions,
                 narrative_role=validated['narrative_role'],
                 timeline_order=validated['timeline_order'],
                 timeline_anchor=validated['timeline_anchor'],

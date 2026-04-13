@@ -6,6 +6,8 @@ from . import polish
 from . import node
 from . import detail
 from . import planning
+from . import time_anchor
+from . import graph_builder_prompt
 
 # 从 registry 导出
 from .registry import (
@@ -39,6 +41,8 @@ from .detail import (
 )
 
 from .planning import PLANNING_PROMPT
+from .time_anchor import TIME_ANCHOR_PROMPT
+from .graph_builder_prompt import GRAPH_BUILDER_PROMPT
 
 __all__ = [
     # Registry
@@ -64,4 +68,7 @@ __all__ = [
     "PODCAST_GENERATION_PROMPT",
     # Planning
     "PLANNING_PROMPT",
+    # Agent2 / Agent3
+    "TIME_ANCHOR_PROMPT",
+    "GRAPH_BUILDER_PROMPT",
 ]

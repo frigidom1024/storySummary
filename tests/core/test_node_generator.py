@@ -98,6 +98,18 @@ class TestNarrativeNodeGenerator:
         assert isinstance(nodes, list)
         assert len(nodes) == 1
 
+    def test_validate_beat_normalizes_importance(self):
+        generator = NarrativeNodeGenerator(api_key="test-key")
+        beat = {"id": "n-0-0", "beat_index": 0, "scene": "场景", "importance": "2"}
+        validated = generator._validate_beat(beat)
+        assert validated["importance"] == 1.0
+
+    def test_validate_beat_has_interactions_default(self):
+        generator = NarrativeNodeGenerator(api_key="test-key")
+        beat = {"id": "n-0-0", "beat_index": 0, "scene": "场景"}
+        validated = generator._validate_beat(beat)
+        assert validated["interactions"] == []
+
 
 if __name__ == "__main__":
     import asyncio

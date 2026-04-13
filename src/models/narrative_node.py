@@ -1,6 +1,13 @@
 from pydantic import BaseModel, Field
 
 
+class InteractionModel(BaseModel):
+    """角色交互感知（由 Agent1 输出）"""
+    target: str = Field(description="交互对象角色名")
+    type: str = Field(description="交互类型: tension/support/neutral")
+    intensity_delta: float = Field(default=0.0, description="强度变化 -1.0 到 1.0")
+
+
 class CharacterState(BaseModel):
     """角色在该节点进入时的状态"""
     name: str
@@ -24,12 +31,13 @@ class NarrativeNode(BaseModel):
     characters: list[CharacterState] = Field(default_factory=list)
     situation: str = ""
     turning_point: str = ""
-    importance: int = Field(default=1, description="节点重要性: 1=普通, 2=重要, 3=关键")
+    importance: float = Field(default=0.5, description="节点重要性: 0.0-1.0")
     emotional_arc: str = ""
     mood_tone: str = ""
     narrative_rhythm: str = ""
     discussion_prompts: list[str] = Field(default_factory=list)
     relationship_delta: list[RelationshipStateChange] = Field(default_factory=list)
+    interactions: list[InteractionModel] = Field(default_factory=list)
     prev_node_id: str = ""
     narrative_role: str = ""
     timeline_order: int = 0
