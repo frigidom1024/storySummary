@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
+import config from '../config'
 
 // === Types ===
 
@@ -28,6 +29,12 @@ export interface CharacterState {
   state_before: string
 }
 
+export interface InteractionModel {
+  target: string
+  type: string  // tension/support/neutral
+  intensity_delta: number
+}
+
 export interface RelationshipStateChange {
   pair: string
   from_state: string
@@ -44,11 +51,13 @@ export interface NarrativeNode {
   characters: CharacterState[]
   situation: string
   turning_point: string
+  importance: number  // 0.0-1.0
   emotional_arc: string
   mood_tone: string
   narrative_rhythm: string
   discussion_prompts: string[]
   relationship_delta: RelationshipStateChange[]
+  interactions: InteractionModel[]
   prev_node_id: string
   narrative_role: string
   timeline_order: number
@@ -113,7 +122,7 @@ export interface AuthToken {
 
 function createApiClient(): AxiosInstance {
   const client = axios.create({
-    baseURL: '/api',
+    baseURL: config.apiBaseUrl,
     headers: {
       'Content-Type': 'application/json',
     },

@@ -2,7 +2,7 @@ import os
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.prompts import DETAIL_RECOVERY_PROMPT
-from src.core.node_generator import create_llm
+from src.core.agents.agent1_extractor import create_llm
 
 
 class DetailRecovery:

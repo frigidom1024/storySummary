@@ -9,9 +9,8 @@ class StoryGraph:
     Supports:
     - Get all threads (story lines)
     - Get nodes in a specific thread (via thread_prev_node_id chain)
-    - Get nodes in original text order (via prev_node_id chain)
-    - Get nodes in story-chronological order (timeline_order)
-    - Get convergence points
+    - Get nodes in original text order (via beat_index and parent_chunk_id)
+    - Get nodes in story-chronological order (via time_label)
     - Query by character
     """
 
@@ -58,7 +57,7 @@ class StoryGraph:
 
         if not tail:
             # No links found, return in chunk order
-            return sorted(thread_nodes, key=lambda n: n.beat_index)
+            return sorted(thread_nodes, key=lambda n: (n.parent_chunk_id, n.beat_index))
 
         # Traverse backward via thread_prev_node_id (tail -> ... -> head)
         result = []
@@ -83,53 +82,34 @@ class StoryGraph:
 
     def get_text_order(self) -> list[NarrativeNode]:
         """
-        Get all nodes in original text/chunk order (via prev_node_id chain).
+        Get all nodes in original text/chunk order.
 
-        Traversal: find tail (node no other node points to via prev_node_id),
-        then follow prev_node_id links backward to head, collect in that order,
-        then reverse to get forward text order.
+        Uses parent_chunk_id and beat_index for ordering.
         """
         if not self.nodes:
             return []
-
-        # Find all nodes that are pointed to by some prev_node_id (i.e., not tails)
-        pointed_to = set()
-        for n in self.nodes:
-            if n.prev_node_id:
-                pointed_to.add(n.prev_node_id)
-
-        # Tail = node that no other node points to via prev_node_id
-        tail = None
-        for n in self.nodes:
-            if n.id not in pointed_to:
-                tail = n
-                break
-
-        if not tail:
-            return list(self.nodes)
-
-        # Traverse backward via prev_node_id (tail -> ... -> head)
-        result = []
-        current = tail
-        visited = set()
-        while current and current.id not in visited:
-            result.append(current)
-            visited.add(current.id)
-            current = self._node_map.get(current.prev_node_id) if current.prev_node_id else None
-
-        # Reverse to get forward text order (head -> ... -> tail)
-        return list(reversed(result))
+        return sorted(self.nodes, key=lambda n: (n.parent_chunk_id, n.beat_index))
 
     def get_timeline_order(self) -> list[NarrativeNode]:
         """
-        Get all nodes sorted by story-chronological order (timeline_order ASC).
-        For same timeline_order, preserve relative order.
+        Get all nodes sorted by story-chronological order.
+
+        Uses time_label (NOW/PAST/FUTURE) for primary sort,
+        then parent_chunk_id and beat_index for secondary sort.
         """
-        return sorted(self.nodes, key=lambda n: (n.timeline_order, n.beat_index))
+        def sort_key(n: NarrativeNode) -> tuple:
+            time_order = {"PAST": 0, "NOW": 1, "FUTURE": 2}.get(n.time_label.upper() if n.time_label else "NOW", 1)
+            return (time_order, n.parent_chunk_id, n.beat_index)
+        return sorted(self.nodes, key=sort_key)
 
     def get_convergence_points(self) -> list[NarrativeNode]:
-        """Get all multi-thread convergence nodes."""
-        return [n for n in self.nodes if n.is_convergence]
+        """Get all multi-thread convergence nodes.
+
+        Note: is_convergence field was removed in simplified model.
+        Returns nodes where thread_id='main' and multiple characters present.
+        """
+        # Simplified: convergence points are main thread nodes with multiple characters
+        return [n for n in self.nodes if n.thread_id == "main" and len(n.characters) > 1]
 
     def get_node_by_id(self, node_id: str) -> NarrativeNode | None:
         """Lookup node by ID."""

@@ -29,29 +29,26 @@ class NarrativeNode(BaseModel):
     location: str = ""
     scene_timing: str = ""
     characters: list[CharacterState] = Field(default_factory=list)
+
+    # === 叙事核心 ===
+    event_summary: str = ""
     situation: str = ""
     turning_point: str = ""
     importance: float = Field(default=0.5, description="节点重要性: 0.0-1.0")
     emotional_arc: str = ""
     mood_tone: str = ""
-    narrative_rhythm: str = ""
     discussion_prompts: list[str] = Field(default_factory=list)
     relationship_delta: list[RelationshipStateChange] = Field(default_factory=list)
     interactions: list[InteractionModel] = Field(default_factory=list)
-    prev_node_id: str = ""
-    narrative_role: str = ""
-    timeline_order: int = 0
-    timeline_anchor: str = ""
-    is_time_jump: bool = False
-    jump_direction: str = ""
-    jump_label: str = ""
+
+    # === 时间坐标 ===
+    time_label: str = Field(default="", description="时间标签: NOW/PAST/FUTURE")
+
+    # === 叙事线链路 ===
     thread_id: str = "main"
     thread_name: str = ""
     thread_prev_node_id: str = ""
     thread_next_node_id: str = ""
-    branch_from_node: str = ""
-    converges_to_node: str = ""
-    is_convergence: bool = False
 
     def to_dict(self) -> dict:
         return self.model_dump()

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import logging
 import os
+from src.config import Config
 from src.api.routers import auth, users, books
 from src.api.exceptions import AppException
 from src.api.schemas.error import ErrorResponse

@@ -19,6 +19,7 @@ class CharacterCard(BaseModel):
     character_id: str
     name: str
     first_seen: str = ""
+    first_seen_scene: str = ""
     current_state: str = ""
     total_appearances: int = 0
     relationships: dict[str, Relationship] = Field(default_factory=dict)

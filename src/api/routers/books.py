@@ -9,6 +9,7 @@ from src.api.schemas.book import BookCreate, BookResponse, NodesResponse, SaveNo
 from src.api.schemas.user import UserResponse
 from src.api.deps import get_book_service, get_node_service, get_user_service, get_current_user_id
 from src.api.websocket import manager
+from src.api.task_manager import task_manager
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
 from src.services.analyzer import Analyzer
@@ -16,6 +17,7 @@ from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.epub_parser import parse_epub
 from src.storage.book_storage import BookStorage
+from src.storage.database import Database
 from src.api.deps import get_book_storage
 from src.api.exceptions import (
     NotFoundError, AuthorizationError, ValidationError,
@@ -33,7 +35,7 @@ async def upload_book(
     author: Optional[str] = Form(None),
     publisher: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
-    book_service: BookService = Depends(get_book_service)
+    book_service: BookService = Depends(get_book_service),
     book_storage: BookStorage = Depends(get_book_storage)
 ):
     """上传 epub 或 txt 文件创建书籍。"""
@@ -136,77 +138,82 @@ async def analyze_book(
     book_service: BookService = Depends(get_book_service)
 ):
     """启动书籍 AI 解析（异步，通过 WebSocket 推送进度）"""
-    import sys
-    sys.stderr.write(f"[analyze_book] FUNCTION CALLED book_id={book_id}\n")
-    sys.stderr.flush()
     print(f"[analyze_book] FUNCTION CALLED book_id={book_id}", file=sys.stderr, flush=True)
     debug("books", "Received analyze request for book_id={}", book_id)
 
     book = book_service.get_book(book_id)
     if not book:
-        print(f"[analyze_book] Book NOT FOUND: {book_id}", file=sys.stderr, flush=True)
         debug("books", "Book not found: {}", book_id)
         raise NotFoundError("书籍")
     if book.user_id != user_id:
-        print(f"[analyze_book] UNAUTHORIZED book_id={book_id} user_id={user_id} book.user_id={book.user_id}", file=sys.stderr, flush=True)
         debug("books", "Unauthorized access attempt for book_id={} by user_id={}", book_id, user_id)
         raise AuthorizationError("无权分析此书籍")
 
-    # 更新状态为 processing
-    print(f"[analyze_book] Updating status to processing: {book_id}", file=sys.stderr, flush=True)
-    debug("books", "Updating book status to processing: {}", book_id)
-    book_service.update_book_status(book_id, "processing")
-
-    # 检查文件是否存在
-    if not book_storage.book_file_exists(book_id):
-        debug("books", "Book file not found for book_id={}", book_id)
-        book_service.update_book_status(book_id, "failed", "书籍文件不存在，请重新上传")
-        raise NotFoundError("书籍文件不存在，请重新上传")
-
-    # 启动异步分析
-    print(f"[analyze_book] Creating asyncio task for _run_analysis: {book_id}", file=sys.stderr, flush=True)
+    # 启动异步分析（验证和错误处理都在 _run_analysis 中）
     debug("books", "Starting async analysis task for book_id={}", book_id)
-    asyncio.create_task(_run_analysis(book_id))
-    print(f"[analyze_book] Task created, returning response: {book_id}", file=sys.stderr, flush=True)
+    task_manager.create_task(
+        book_id,
+        _run_analysis(book_id, user_id),
+        on_error=_on_analysis_error,
+    )
 
     return {"message": "Analysis started", "book_id": book_id}
 
 
-async def _run_analysis(book_id: str):
-    """Run analysis in background with progress reporting."""
-    import sys
+async def _on_analysis_error(task_id: str, exc: Exception):
+    """分析任务错误回调，通过 WS 发送错误消息"""
+    error_msg = str(exc)
+    await manager.send_progress(task_id, 0, f"解析失败: {error_msg}", "failed")
+    Database().update_book_status(task_id, "failed", error_msg)
+
+
+async def _run_analysis(book_id: str, user_id: str):
+    """Run analysis in background with progress reporting via WebSocket."""
     print(f"[_run_analysis] started for book_id={book_id}", file=sys.stderr, flush=True)
 
     async def progress_callback(progress: int, message: str):
         print(f"[progress_callback] book_id={book_id} progress={progress} message={message}", file=sys.stderr, flush=True)
         debug("progress", "book_id={} progress={} message={}", book_id, progress, message)
-        # Auto-determine status based on progress
         status = "completed" if progress == 100 else "processing"
         await manager.send_progress(book_id, progress, message, status)
 
-    try:
-        print(f"[_run_analysis] Creating Analyzer for book_id={book_id}", file=sys.stderr, flush=True)
-        analyzer = Analyzer()
+    async def send_error(message: str):
+        """Send error via WebSocket and update book status."""
+        await manager.send_progress(book_id, 0, message, "failed")
+        Database().update_book_status(book_id, "failed", message)
 
-        # 使用 BookStorage 查找文件
-        book_storage = get_book_storage()
-        book_file = book_storage.get_book_file(book_id)
-        if not book_file:
-            print(f"[_run_analysis] Book file NOT FOUND for book_id={book_id}", file=sys.stderr, flush=True)
-            debug("books", "Book file not found for book_id={}", book_id)
-            await manager.send_progress(book_id, 0, "未找到书籍文件", "failed")
-            Database().update_book_status(book_id, "failed", "未找到书籍文件")
-            return
+    # 验证书籍存在
+    book_service = get_book_service()
+    book = book_service.get_book(book_id)
+    if not book:
+        await send_error("书籍不存在")
+        return
 
-        actual_path, file_type = book_file
-        print(f"[_run_analysis] Found file type={file_type} path={actual_path} for book_id={book_id}", file=sys.stderr, flush=True)
-        debug("books", "Found file type={} path={} for book_id={}", file_type, actual_path, book_id)
-        await analyzer.analyze(book_id, actual_path, file_type, progress_callback)
-    except Exception as e:
-        error_msg = str(e)
-        debug("books", "Analysis failed for book_id={} error={}", book_id, error_msg)
-        await manager.send_progress(book_id, 0, f"解析失败: {error_msg}", "failed")
-        Database().update_book_status(book_id, "failed", error_msg)
+    # 验证用户权限
+    if book.user_id != user_id:
+        await send_error("无权分析此书籍")
+        return
+
+    # 更新状态为处理中
+    book_service.update_book_status(book_id, "processing")
+
+    # 验证文件存在
+    book_storage = get_book_storage()
+    if not book_storage.book_file_exists(book_id):
+        await send_error("书籍文件不存在，请重新上传")
+        return
+
+    book_file = book_storage.get_book_file(book_id)
+    if not book_file:
+        await send_error("未找到书籍文件")
+        return
+
+    actual_path, file_type = book_file
+    print(f"[_run_analysis] Found file type={file_type} path={actual_path} for book_id={book_id}", file=sys.stderr, flush=True)
+
+    # 执行分析
+    analyzer = Analyzer()
+    await analyzer.analyze(book_id, actual_path, file_type, progress_callback)
 
 
 @router.websocket("/{book_id}/ws")

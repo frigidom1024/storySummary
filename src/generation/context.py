@@ -7,19 +7,24 @@ class WritingContext:
 
     def __init__(self):
         self.drafts: list[ChapterDraft] = []
-        self.context_summary: str = ""
-        self.established_facts: list[str] = []
+        self.context_summary: str = ""  # 压缩后的上下文摘要
+        self.chapter_summaries: list[str] = []  # 每章的一句话摘要
 
     def build_prompt_context(self, chunk, nodes: list[NarrativeNode]) -> str:
-        """生成 AI 提示词上下文"""
+        """生成 AI 提示词上下文
+
+        只传递压缩摘要，不传完整历史内容，避免上下文过长
+        """
         parts = []
 
+        # 传递已建立的上下文摘要（压缩后的情节进展）
         if self.context_summary:
-            parts.append(f"【已写内容】\n{self.full_draft()}\n")
+            parts.append(f"【前情概要】\n{self.context_summary}\n")
 
+        # 节点作为快速索引参考，不是主要内容来源
         if nodes:
-            nodes_text = self._format_nodes(nodes)
-            parts.append(f"【本章叙事节点】\n{nodes_text}\n")
+            nodes_text = self._format_nodes_brief(nodes)
+            parts.append(f"【本章结构索引】\n{nodes_text}\n")
 
         return "\n".join(parts)
 
@@ -39,19 +44,40 @@ class WritingContext:
         return "\n\n---\n\n".join([d.chapter_text for d in self.drafts])
 
     def _update_summary(self) -> None:
-        """更新上下文摘要（截取最后章节的前 500 字）"""
-        if self.drafts:
-            last_text = self.drafts[-1].chapter_text
-            self.context_summary = last_text[:500] if last_text else ""
-        else:
+        """更新上下文摘要 - 压缩为情节进展摘要"""
+        if not self.drafts:
             self.context_summary = ""
+            self.chapter_summaries = []
+            return
+
+        # 生成每章的一句话摘要
+        self.chapter_summaries = []
+        for draft in self.drafts:
+            # 提取章节开头100字作为摘要基础
+            first_100 = draft.chapter_text[:200].replace('\n', ' ')
+            self.chapter_summaries.append(first_100)
+
+        # 压缩上下文：只保留最近2章的摘要 + 整体情节线索
+        recent = self.chapter_summaries[-2:] if len(self.chapter_summaries) > 1 else self.chapter_summaries
+        self.context_summary = f"（已写 {len(self.drafts)} 章）\n" + "\n".join([
+            f"第{i+1}章: {s}..."
+            for i, s in enumerate(recent)
+        ])
+
+    def _format_nodes_brief(self, nodes: list[NarrativeNode]) -> str:
+        """简洁的节点格式 - 仅用于快速索引"""
+        lines = []
+        for i, n in enumerate(nodes):
+            lines.append(f"节点{i+1}: {n.scene}")
+        return "\n".join(lines)
 
     def _format_nodes(self, nodes: list[NarrativeNode]) -> str:
+        """完整的节点格式 - 保留但减少使用"""
         lines = []
         for i, n in enumerate(nodes):
             chars = ", ".join([c.name for c in n.characters]) if n.characters else "无"
             lines.append(
-                f"节点{i+1}: [{n.narrative_role}] {n.scene}\n"
+                f"节点{i+1}: {n.scene}\n"
                 f"  情境: {n.situation}\n"
                 f"  角色: {chars}"
             )

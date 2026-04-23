@@ -176,6 +176,7 @@ import { useBooksStore } from '../stores/books'
 import { booksApi } from '../api'
 import type { NarrativeNode, ManuscriptResponse } from '../api'
 import { createPageStateMachine } from '../composables/usePageStateMachine'
+import config from '../config'
 import FilterBar from '../components/FilterBar.vue'
 import TimelineView from '../components/TimelineView.vue'
 import NodeGraph from '../components/NodeGraph.vue'
@@ -310,8 +311,8 @@ function connectWebSocket() {
     ws = null
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//localhost:8000/api/books/${book.value.id}/ws`
+  // 使用配置中的 WebSocket 地址，或默认使用相对路径
+  const wsUrl = config.wsUrl || `/api/books/${book.value.id}/ws`
 
   ws = new WebSocket(wsUrl)
 

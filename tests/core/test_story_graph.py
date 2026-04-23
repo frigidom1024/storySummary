@@ -7,22 +7,23 @@ from src.core.story_graph import StoryGraph
 from src.models.narrative_node import NarrativeNode, CharacterState
 
 
-def make_node(node_id: str, thread_id: str = "main", timeline_order: int = 0,
-              prev: str = "", next_n: str = "",
-              is_conv: bool = False, chars: list[str] = None) -> NarrativeNode:
-    """Helper to create a test node."""
+def make_node(node_id: str, thread_id: str = "main", time_label: str = "NOW",
+              importance: float = 0.5, chars: list[str] = None,
+              parent_chunk_id: str = "c-0", beat_index: int = 0,
+              thread_prev: str = "") -> NarrativeNode:
+    """Helper to create a test node with simplified model."""
     return NarrativeNode(
         id=node_id,
+        parent_chunk_id=parent_chunk_id,
+        beat_index=beat_index,
         thread_id=thread_id,
         thread_name=f"{thread_id}线",
-        timeline_order=timeline_order,
-        thread_prev_node_id=prev,
-        thread_next_node_id=next_n,
-        is_convergence=is_conv,
+        time_label=time_label,
+        importance=importance,
+        thread_prev_node_id=thread_prev,
         characters=[CharacterState(name=c) for c in (chars or [])],
         scene=f"场景-{node_id}",
         situation=f"情境-{node_id}",
-        narrative_role="rising"
     )
 
 
@@ -39,13 +40,11 @@ def test_get_threads():
 
 
 def test_get_thread_main():
-    """Test get_thread returns nodes in story order."""
-    # n-0 → n-3 (main thread)
-    # n-1 → n-4 (zhang thread)
+    """Test get_thread returns nodes in story order via thread_prev_node_id links."""
     nodes = [
-        make_node("n-0", thread_id="main", timeline_order=0),
-        make_node("n-1", thread_id="main", timeline_order=1, prev="n-0"),
-        make_node("n-3", thread_id="main", timeline_order=2, prev="n-1"),
+        make_node("n-0", thread_id="main", beat_index=0, thread_prev=""),
+        make_node("n-1", thread_id="main", beat_index=1, thread_prev="n-0"),
+        make_node("n-3", thread_id="main", beat_index=2, thread_prev="n-1"),
     ]
     sg = StoryGraph(nodes)
     thread_nodes = sg.get_thread("main")
@@ -54,24 +53,24 @@ def test_get_thread_main():
 
 
 def test_get_timeline_order():
-    """Test get_timeline_order sorts by timeline_order ASC."""
+    """Test get_timeline_order sorts by time_label (PAST -> NOW -> FUTURE)."""
     nodes = [
-        make_node("n-2", timeline_order=5),
-        make_node("n-0", timeline_order=-10),
-        make_node("n-1", timeline_order=0),
+        make_node("n-2", time_label="FUTURE"),
+        make_node("n-0", time_label="PAST"),
+        make_node("n-1", time_label="NOW"),
     ]
     sg = StoryGraph(nodes)
     ordered = sg.get_timeline_order()
     ids = [n.id for n in ordered]
-    assert ids == ["n-0", "n-1", "n-2"]  # -10 → 0 → 5
+    assert ids == ["n-0", "n-1", "n-2"]  # PAST → NOW → FUTURE
 
 
 def test_get_convergence_points():
-    """Test get_convergence_points returns is_convergence nodes."""
+    """Test get_convergence_points returns main thread nodes with multiple characters."""
     nodes = [
-        make_node("n-0", is_conv=False),
-        make_node("n-1", is_conv=True),
-        make_node("n-2", is_conv=True),
+        make_node("n-0", chars=["林夏"]),
+        make_node("n-1", thread_id="main", chars=["林夏", "陈远"]),
+        make_node("n-2", thread_id="main", chars=["林夏", "张博"]),
     ]
     sg = StoryGraph(nodes)
     conv = sg.get_convergence_points()
@@ -94,7 +93,7 @@ def test_get_character_threads():
     """Test get_character_threads returns which threads a character is on."""
     nodes = [
         make_node("n-0", thread_id="main", chars=["林夏"]),
-        make_node("n-1", thread_id="zhang", chars=["林夏"]),  # 林夏 also appears on zhang thread
+        make_node("n-1", thread_id="zhang", chars=["林夏"]),
     ]
     sg = StoryGraph(nodes)
     threads = sg.get_character_threads("林夏")
@@ -114,8 +113,8 @@ def test_get_node_by_id():
 def test_single_thread_default():
     """Single thread story with default thread_id=main."""
     nodes = [
-        make_node("n-0", thread_id="main", timeline_order=0),
-        make_node("n-1", thread_id="main", timeline_order=1, prev="n-0"),
+        make_node("n-0", thread_id="main", beat_index=0),
+        make_node("n-1", thread_id="main", beat_index=1, thread_prev="n-0"),
     ]
     sg = StoryGraph(nodes)
     assert sg.get_threads() == ["main"]
@@ -123,24 +122,19 @@ def test_single_thread_default():
 
 
 def test_get_text_order():
-    """Test get_text_order returns nodes in forward text order via prev_node_id chain."""
-    # Chain: n-0 -> n-1 -> n-2 (n-2.prev=n-1, n-1.prev=n-0, n-0.prev=None)
+    """Test get_text_order returns nodes in forward order via parent_chunk_id and beat_index."""
     nodes = [
-        NarrativeNode(id="n-0", thread_id="main", timeline_order=0,
-                       prev_node_id="", beat_index=0,
-                       thread_prev_node_id="", narrative_role="opening",
-                       situation="s0"),
-        NarrativeNode(id="n-1", thread_id="main", timeline_order=1,
-                       prev_node_id="n-0", beat_index=1,
-                       thread_prev_node_id="n-0", narrative_role="rising",
-                       situation="s1"),
-        NarrativeNode(id="n-2", thread_id="main", timeline_order=2,
-                       prev_node_id="n-1", beat_index=2,
-                       thread_prev_node_id="n-1", narrative_role="climax",
-                       situation="s2"),
+        NarrativeNode(id="n-0", parent_chunk_id="c-0", beat_index=0,
+                      thread_id="main", time_label="NOW",
+                      scene="s0", situation="s0"),
+        NarrativeNode(id="n-1", parent_chunk_id="c-0", beat_index=1,
+                      thread_id="main", time_label="NOW",
+                      scene="s1", situation="s1"),
+        NarrativeNode(id="n-2", parent_chunk_id="c-0", beat_index=2,
+                      thread_id="main", time_label="NOW",
+                      scene="s2", situation="s2"),
     ]
     sg = StoryGraph(nodes)
     ordered = sg.get_text_order()
     ids = [n.id for n in ordered]
-    # Should be forward text order: n-0, n-1, n-2
     assert ids == ["n-0", "n-1", "n-2"]

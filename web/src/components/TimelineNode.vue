@@ -26,6 +26,14 @@
     <div v-if="node.timeline_anchor" class="node-anchor">
       {{ node.timeline_anchor }}
     </div>
+    <div v-if="node.importance !== undefined" class="node-importance">
+      <div class="importance-bar-timeline">
+        <div class="importance-fill-timeline" :style="{ width: `${node.importance * 100}%` }"></div>
+      </div>
+    </div>
+    <div v-if="node.interactions?.length" class="node-interactions">
+      <span v-for="(interaction, idx) in node.interactions.slice(0, 2)" :key="idx" class="interaction-dot" :class="`type-${interaction.type}`" :title="`${interaction.target}: ${interaction.type}`"></span>
+    </div>
   </div>
 </template>
 
@@ -117,4 +125,36 @@ const characterNames = computed(() =>
   color: #9333ea;
   font-weight: 500;
 }
+
+.node-importance {
+  margin-top: 6px;
+}
+
+.importance-bar-timeline {
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.importance-fill-timeline {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+}
+
+.node-interactions {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.interaction-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.interaction-dot.type-tension { background: #ef4444; }
+.interaction-dot.type-support { background: #10b981; }
+.interaction-dot.type-neutral { background: #6b7280; }
 </style>

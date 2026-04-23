@@ -28,17 +28,19 @@ class ChapterWriter:
     ) -> str:
         """
         生成单章播客稿
-        返回: chapter_text - 本章生成的稿子
+
+        节点仅用于快速把握结构，实际内容基于原文 chunk.text
         """
-        nodes_summary = self._format_nodes(nodes)
+        # 节点只传简要索引，不传完整详情
+        nodes_index = self._format_nodes_brief(nodes)
 
         prompt_data = build_writing_prompt(
             chapter_title=chunk.chapter or f"第{chunk.order + 1}章",
             chapter_summary=f"约{len(chunk.text)}字",
-            core_themes="（待补充）",
+            core_themes="（由AI根据全文理解后补充）",
             established_claims=context_summary or "（无）",
-            nodes_summary=nodes_summary,
-            chunk_text=chunk.text,
+            nodes_summary=nodes_index,
+            chunk_text=chunk.text,  # 实际写作素材
             style_key=style_key,
             custom_rules=custom_rules,
             reference_script=reference_script,
@@ -66,15 +68,22 @@ class ChapterWriter:
 
         return result
 
+    def _format_nodes_brief(self, nodes: list[NarrativeNode]) -> str:
+        """简洁的节点格式 - 仅用于快速索引定位"""
+        lines = []
+        for i, n in enumerate(nodes):
+            lines.append(f"节点{i+1}: {n.scene}")
+        return "\n".join(lines)
+
     def _format_nodes(self, nodes: list[NarrativeNode]) -> str:
+        """完整节点格式 - 已简化不再使用"""
         lines = []
         for i, n in enumerate(nodes):
             chars = ", ".join([c.name for c in n.characters]) if n.characters else "无"
+            importance = getattr(n, 'importance', 0.5)
             lines.append(
-                f"节点{i+1}: [{n.narrative_role}] {n.scene}\n"
+                f"节点{i+1}: {n.scene} (重要性: {importance})\n"
                 f"  情境: {n.situation}\n"
-                f"  转折: {n.turning_point or '无'}\n"
-                f"  情绪弧: {n.emotional_arc or '无'} | 氛围: {n.mood_tone or '无'}\n"
                 f"  角色: {chars}"
             )
         return "\n\n".join(lines)

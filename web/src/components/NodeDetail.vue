@@ -46,11 +46,29 @@
           <p>{{ node.emotional_arc }}</p>
         </div>
 
+        <div v-if="node.importance" class="detail-section">
+          <h4>重要性</h4>
+          <div class="importance-bar">
+            <div class="importance-fill" :style="{ width: `${node.importance * 100}%` }"></div>
+          </div>
+          <span class="importance-value">{{ (node.importance * 100).toFixed(0) }}%</span>
+        </div>
+
         <div v-if="node.characters?.length" class="detail-section">
           <h4>角色</h4>
           <div v-for="char in node.characters" :key="char.name" class="character-item">
             <span class="char-name">{{ char.name }}</span>
             <span v-if="char.state_before" class="char-state">{{ char.state_before }}</span>
+          </div>
+        </div>
+
+        <div v-if="node.interactions?.length" class="detail-section">
+          <h4>角色交互</h4>
+          <div v-for="interaction in node.interactions" :key="interaction.target" class="interaction-item">
+            <span class="interaction-target">{{ node.characters?.[0]?.name || '?' }}</span>
+            <span class="interaction-arrow">→</span>
+            <span class="interaction-target">{{ interaction.target }}</span>
+            <span class="interaction-type" :class="`type-${interaction.type}`">{{ interaction.type }}</span>
           </div>
         </div>
 
@@ -180,6 +198,53 @@ const emit = defineEmits<{ close: [] }>()
   font-weight: 500;
   margin-right: 8px;
 }
+
+.importance-bar {
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.importance-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.importance-value {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.interaction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.interaction-target {
+  font-weight: 500;
+}
+
+.interaction-arrow {
+  color: var(--color-text-secondary);
+}
+
+.interaction-type {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: white;
+}
+
+.interaction-type.type-tension { background: var(--color-destructive); }
+.interaction-type.type-support { background: var(--color-role-ending); }
+.interaction-type.type-neutral { background: var(--color-muted); }
 
 .char-state,
 .rel-pair {

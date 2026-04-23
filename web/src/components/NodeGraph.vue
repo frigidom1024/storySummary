@@ -94,10 +94,10 @@ function initGraph() {
     .style('cursor', 'pointer')
 
   nodeGroups.append('circle')
-    .attr('r', 22)
+    .attr('r', d => 18 + (d.importance || 0.5) * 8)  // Size based on importance
     .attr('fill', d => roleColors[d.narrative_role] || '#3b82f6')
-    .attr('stroke', '#1f2937')
-    .attr('stroke-width', 2)
+    .attr('stroke', d => d.is_time_jump ? '#f59e0b' : '#1f2937')
+    .attr('stroke-width', d => d.is_time_jump ? 3 : 2)
 
   nodeGroups.append('text')
     .attr('text-anchor', 'middle')

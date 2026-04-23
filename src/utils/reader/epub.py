@@ -16,8 +16,8 @@ class EpubReader(BookReader):
 
     def __init__(self, epub_path: str):
         self.epub_path = Path(epub_path)
-        self.metadata: dict = {}
-        self.chapters: list[dict] = []  # [{"title": str, "content": str, "order": int}]
+        self._metadata: dict = {}
+        self._chapters: list[dict] = []  # [{"title": str, "content": str, "order": int}]
         self._opf_dir: str = ""
 
     def read(self) -> str:
@@ -103,7 +103,7 @@ class EpubReader(BookReader):
                     title = self._extract_title(content)
 
                     if text.strip():
-                        self.chapters.append({
+                        self._chapters.append({
                             "title": title or f"Chapter {order + 1}",
                             "content": text,
                             "order": order
@@ -121,7 +121,9 @@ class EpubReader(BookReader):
         # Handle CDATA sections
         html = re.sub(r'<!\[CDATA\[.*?\]\]>', '', html, flags=re.DOTALL)
 
-        # Replace common HTML entities
+        # Replace common HTML entities (including numeric XML entities)
+        html = re.sub(r'&#(\d+);', self._decode_numeric_entity, html)
+        html = re.sub(r'&#x([0-9a-fA-F]+);', self._decode_hex_entity, html)
         html = html.replace('&nbsp;', ' ')
         html = html.replace('&amp;', '&')
         html = html.replace('&lt;', '<')
@@ -133,10 +135,25 @@ class EpubReader(BookReader):
         # Remove all HTML tags
         text = re.sub(r'<[^>]+>', '', html)
 
-        # Clean up whitespace
+        # Replace non-breaking spaces and clean up whitespace
+        text = text.replace('\xa0', ' ')
         text = re.sub(r'\s+', ' ', text)
 
         return text.strip()
+
+    def _decode_numeric_entity(self, m):
+        """Decode numeric HTML entity."""
+        try:
+            return chr(int(m.group(1)))
+        except:
+            return m.group(0)
+
+    def _decode_hex_entity(self, m):
+        """Decode hex HTML entity."""
+        try:
+            return chr(int(m.group(1), 16))
+        except:
+            return m.group(0)
 
     def _extract_title(self, html: str) -> Optional[str]:
         """Try to extract title from HTML content."""
@@ -169,7 +186,7 @@ class EpubReader(BookReader):
         parts.append("\n")
 
         # Add chapters
-        for chapter in self.chapters:
+        for chapter in self._chapters:
             parts.append(f"\n## {chapter['title']}\n\n")
             parts.append(chapter["content"])
             parts.append("\n\n")
@@ -183,3 +200,7 @@ class EpubReader(BookReader):
     @property
     def author(self) -> str:
         return self.metadata.get("creator", "Unknown")
+
+    @property
+    def chapters(self) -> list[dict]:
+        return self._chapters

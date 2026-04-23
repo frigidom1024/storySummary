@@ -71,6 +71,16 @@
         <span class="time-anchor">{{ node.timeline_anchor }}</span>
       </div>
 
+      <div class="info-section" v-if="node.importance !== undefined">
+        <label>重要性</label>
+        <div class="importance-display">
+          <div class="importance-bar-panel">
+            <div class="importance-fill-panel" :style="{ width: `${node.importance * 100}%` }"></div>
+          </div>
+          <span class="importance-text">{{ (node.importance * 100).toFixed(0) }}%</span>
+        </div>
+      </div>
+
       <div class="info-section" v-if="node.thread_name">
         <label>叙事线</label>
         <span class="thread-badge">{{ node.thread_name }}</span>
@@ -90,6 +100,17 @@
           <div v-for="rel in node.relationship_delta" :key="rel.pair" class="relationship-item">
             <span class="pair">{{ rel.pair }}</span>
             <span class="delta">{{ rel.from_state }} → {{ rel.to_state }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-section" v-if="node.interactions?.length">
+        <label>角色交互</label>
+        <div class="interactions-list">
+          <div v-for="(interaction, idx) in node.interactions" :key="idx" class="interaction-item">
+            <span class="interaction-badge" :class="`type-${interaction.type}`">{{ interaction.type }}</span>
+            <span class="interaction-target">{{ interaction.target }}</span>
+            <span class="interaction-intensity">{{ interaction.intensity_delta > 0 ? '+' : '' }}{{ interaction.intensity_delta.toFixed(1) }}</span>
           </div>
         </div>
       </div>
@@ -339,7 +360,71 @@ const roleText = computed(() => {
   color: #e5e7eb;
 }
 
+.importance-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.importance-bar-panel {
+  flex: 1;
+  height: 6px;
+  background: #374151;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.importance-fill-panel {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #a855f7);
+  border-radius: 3px;
+}
+
+.importance-text {
+  font-size: 12px;
+  color: #9ca3af;
+  min-width: 40px;
+}
+
 .delta {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.interactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interaction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #1f2937;
+  border-radius: var(--radius-sm);
+}
+
+.interaction-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  color: white;
+  text-transform: uppercase;
+}
+
+.interaction-badge.type-tension { background: #ef4444; }
+.interaction-badge.type-support { background: #10b981; }
+.interaction-badge.type-neutral { background: #6b7280; }
+
+.interaction-target {
+  flex: 1;
+  font-size: 13px;
+  color: #e5e7eb;
+}
+
+.interaction-intensity {
   font-size: 11px;
   color: #9ca3af;
 }

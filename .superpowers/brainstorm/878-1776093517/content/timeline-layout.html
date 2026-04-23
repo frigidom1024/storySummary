@@ -1,0 +1,70 @@
+<h2>叙事图谱 - 按线程分组的时间线布局</h2>
+<p class="subtitle">按 thread_id 分行，timeline_order 横向排列</p>
+
+<div class="mockup">
+  <div class="mockup-header">Timeline Layout Preview</div>
+  <div class="mockup-body">
+    <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px; background: #0f1419; min-height: 300px;">
+
+      <!-- Thread 1 (主线) -->
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap;">主线</div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">1</div>
+          <div style="width: 30px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: bold;">2</div>
+          <div style="width: 30px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: #ef4444; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold;">3</div>
+          <div style="width: 30px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">4</div>
+          <div style="width: 30px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">5</div>
+        </div>
+      </div>
+
+      <!-- Thread 2 (支线A) -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-left: 60px;">
+        <div style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap;">支线A</div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: bold;">A1</div>
+          <div style="width: 50px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">A2</div>
+          <div style="width: 50px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: bold;">A3</div>
+        </div>
+      </div>
+
+      <!-- Thread 3 (支线B) -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-left: 60px;">
+        <div style="background: #ec4899; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap;">支线B</div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: #ec4899; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: bold;">B1</div>
+          <div style="width: 50px; height: 2px; background: #4b5563;"></div>
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: #ec4899; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">B2</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>特点说明</h3>
+  <ul style="color: #d1d5db; line-height: 1.8;">
+    <li><strong>横向</strong>：按 timeline_order 排列，体现叙事顺序</li>
+    <li><strong>纵向</strong>：按 thread_id 分行展示不同角色的故事线</li>
+    <li><strong>节点大小</strong>：反映 importance 重要性</li>
+    <li><strong>节点颜色</strong>：反映 narrative_role（开场/发展/高潮/结尾）</li>
+    <li><strong>支持横向滚动</strong>：节点再多也能容纳</li>
+  </ul>
+</div>
+
+<div class="options" style="margin-top: 24px;">
+  <div class="option" data-choice="confirm" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>确认采用此布局</h3>
+      <p>按线程分组的时间线布局，横向展示时间顺序，纵向区分不同角色的故事线</p>
+    </div>
+  </div>
+</div>

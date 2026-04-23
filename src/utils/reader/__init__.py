@@ -28,7 +28,11 @@ class BookReader(ABC):
     @property
     def metadata(self) -> dict:
         """完整元数据"""
-        return {}
+        return getattr(self, '_metadata', {})
+
+    @metadata.setter
+    def metadata(self, value: dict):
+        self._metadata = value
 
 
 def read_book(book_path: str) -> BookReader:

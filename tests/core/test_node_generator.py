@@ -6,7 +6,8 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from langchain_core.messages import AIMessage
 from src.models.chunk import Chunk
-from src.core.node_generator import NarrativeNodeGenerator, NarrativeBeatsOutput, NarrativeBeatModel, CharacterStateModel, RelationshipStateChangeModel
+from src.core.node_generator import NarrativeNodeGenerator
+from src.core.agents.agent1_extractor import Agent1Extractor, NarrativeBeatModel, CharacterStateModel
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
 
 
@@ -99,15 +100,15 @@ class TestNarrativeNodeGenerator:
         assert len(nodes) == 1
 
     def test_validate_beat_normalizes_importance(self):
-        generator = NarrativeNodeGenerator(api_key="test-key")
+        agent1 = Agent1Extractor(api_key="test-key")
         beat = {"id": "n-0-0", "beat_index": 0, "scene": "场景", "importance": "2"}
-        validated = generator._validate_beat(beat)
+        validated = agent1._validate_beat(beat)
         assert validated["importance"] == 1.0
 
     def test_validate_beat_has_interactions_default(self):
-        generator = NarrativeNodeGenerator(api_key="test-key")
+        agent1 = Agent1Extractor(api_key="test-key")
         beat = {"id": "n-0-0", "beat_index": 0, "scene": "场景"}
-        validated = generator._validate_beat(beat)
+        validated = agent1._validate_beat(beat)
         assert validated["interactions"] == []
 
 
@@ -128,7 +129,7 @@ if __name__ == "__main__":
         generator = NarrativeNodeGenerator()
         chunker = AdaptiveChunker()
 
-        wind_path = Path(__file__).parent.parent.parent / 'samples' / 'wind'
+        wind_path = Path(__file__).parent.parent.parent / 'samples' / 'wind.txt'
         with open(wind_path, 'r', encoding='utf-8') as f:
             text = f.read()
 
@@ -152,12 +153,14 @@ if __name__ == "__main__":
                     "characters": [{"name": c.name, "state_before": c.state_before} for c in node.characters],
                     "situation": node.situation,
                     "turning_point": node.turning_point,
+                    "importance": node.importance,
                     "emotional_arc": node.emotional_arc,
                     "mood_tone": node.mood_tone,
-                    "narrative_rhythm": node.narrative_rhythm,
                     "discussion_prompts": node.discussion_prompts,
                     "relationship_delta": [{"pair": r.pair, "from": r.from_state, "to": r.to_state} for r in node.relationship_delta],
-                    "narrative_role": node.narrative_role,
+                    "time_label": node.time_label,
+                    "thread_id": node.thread_id,
+                    "thread_name": node.thread_name,
                 }
                 all_results.append(node_dict)
 

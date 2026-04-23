@@ -232,18 +232,18 @@ class SmartChunker:
         sentences = re.split(sentence_endings, text)
         return [s.strip() for s in sentences if s.strip()]
 
-    def chunk(self, text: str) -> list[Chunk]:
+    def chunk(self, text: str, chunk_prefix: str = "chunk") -> list[Chunk]:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
         if not paragraphs:
-            return [Chunk(id="chunk-0000", text=text.strip(), order=0)]
+            return [Chunk(id=f"{chunk_prefix}-0000", text=text.strip(), order=0)]
 
         marker_type = self._detect_overall_marker_type(paragraphs)
 
         if marker_type == 'none':
-            return self._chunk_without_markers(paragraphs)
+            return self._chunk_without_markers(paragraphs, chunk_prefix)
 
-        return self._chunk_with_markers(paragraphs)
+        return self._chunk_with_markers(paragraphs, chunk_prefix)
 
     def _detect_overall_marker_type(self, paragraphs: list[str]) -> str:
         has_chinese = False
@@ -272,7 +272,7 @@ class SmartChunker:
 
         return 'numbered'
 
-    def _chunk_without_markers(self, paragraphs: list[str]) -> list[Chunk]:
+    def _chunk_without_markers(self, paragraphs: list[str], chunk_prefix: str = "chunk") -> list[Chunk]:
         chunks = []
         current_chunk = []
         current_size = 0
@@ -285,7 +285,7 @@ class SmartChunker:
                 chunk_text = "\n\n".join(current_chunk)
                 if len(chunk_text) >= self.min_chunk_chars:
                     chunks.append(Chunk(
-                        id=f"chunk-{order:04d}",
+                        id=f"{chunk_prefix}-{order:04d}",
                         text=chunk_text,
                         chapter=f"片段 {order + 1}",
                         order=order
@@ -300,7 +300,7 @@ class SmartChunker:
             if current_size >= self.ideal_chunk_chars and len(current_chunk) >= 2:
                 chunk_text = "\n\n".join(current_chunk)
                 chunks.append(Chunk(
-                    id=f"chunk-{order:04d}",
+                    id=f"{chunk_prefix}-{order:04d}",
                     text=chunk_text,
                     chapter=f"片段 {order + 1}",
                     order=order
@@ -312,7 +312,7 @@ class SmartChunker:
         if current_chunk:
             chunk_text = "\n\n".join(current_chunk)
             chunks.append(Chunk(
-                id=f"chunk-{order:04d}",
+                id=f"{chunk_prefix}-{order:04d}",
                 text=chunk_text,
                 chapter=f"片段 {order + 1}",
                 order=order
@@ -320,7 +320,7 @@ class SmartChunker:
 
         return chunks
 
-    def _chunk_with_markers(self, paragraphs: list[str]) -> list[Chunk]:
+    def _chunk_with_markers(self, paragraphs: list[str], chunk_prefix: str = "chunk") -> list[Chunk]:
         chunks = []
         order = 0
 
@@ -336,7 +336,7 @@ class SmartChunker:
                 if len(chunk_text) >= self.min_chunk_chars:
                     label = current_chapter or current_section or f"章节 {order + 1}"
                     chunks.append(Chunk(
-                        id=f"chunk-{order:04d}",
+                        id=f"{chunk_prefix}-{order:04d}",
                         text=chunk_text,
                         chapter=label,
                         order=order
@@ -454,21 +454,22 @@ class AdaptiveChunker:
         )
         self.text_chunker = TextChunker(chunk_size=1)
 
-    def chunk(self, text: str) -> list[Chunk]:
+    def chunk(self, text: str, chunk_prefix: str = "chunk") -> list[Chunk]:
         sample = text[:2000]
 
         paragraph_count = text.count('\n\n') + 1
         avg_para_len = len(text) / max(paragraph_count, 1)
 
         if avg_para_len > 500:
-            return self.smart_chunker.chunk(text)
+            return self.smart_chunker.chunk(text, chunk_prefix)
 
         lines = [l.strip() for l in text.split('\n') if l.strip()]
         has_many_short_lines = len([l for l in lines if len(l) < 100]) > len(lines) * 0.6
 
         if has_many_short_lines and avg_para_len < 50:
             return self.smart_chunker._chunk_without_markers(
-                [p.strip() for p in text.split('\n\n') if p.strip()]
+                [p.strip() for p in text.split('\n\n') if p.strip()],
+                chunk_prefix
             )
 
-        return self.smart_chunker.chunk(text)
+        return self.smart_chunker.chunk(text, chunk_prefix)
