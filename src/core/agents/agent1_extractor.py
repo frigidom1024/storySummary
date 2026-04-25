@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.models.chunk import Chunk
@@ -31,7 +31,6 @@ class NarrativeBeatModel(BaseModel):
     turning_point: str = Field(default="", description="What changed")
     importance: float = Field(default=0.5, description="Node importance 0.0-1.0")
     time_label: str = Field(default="NOW", description="Time label: NOW, PAST, FUTURE")
-
 
 def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
     """Create LLM client."""
@@ -59,6 +58,7 @@ def create_node_tools(book_id: str):
 
         Returns:
             A list of node summaries in JSON format.
+            if no previous chunk nodes exist, return an empty list.
         """
         result = get_previous_chunk_nodes_impl(book_id=book_id)
         return json.dumps(result if result else [], ensure_ascii=False)
@@ -136,8 +136,7 @@ Chunk order: {chunk_order}
 Output your final answer using the output_beats tool."""),
         ])
 
-        agent = create_react_agent(self.llm, tools, prompt=prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+        return create_agent(self.llm, tools, prompt=prompt)
 
     def _validate_beat(self, beat_dict: dict) -> Optional[dict]:
         """Validate and normalize a beat dict."""

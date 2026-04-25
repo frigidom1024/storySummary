@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.logging_config import debug as debug_log
@@ -85,8 +85,7 @@ Output format: JSON array with node_id and discussion_prompts array:
 Output your final answer using the output_discussion_prompts tool."""),
         ])
 
-        agent = create_react_agent(self.llm, tools, prompt=prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+        return create_agent(self.llm, tools, prompt=prompt)
 
     async def find(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
         """为每个节点发现有趣点"""

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.models.character_card import CharacterCard
@@ -86,8 +86,7 @@ Recent events (for context):
 Output your final analysis using the output_character_analysis tool."""),
         ])
 
-        agent = create_react_agent(self.llm, tools, prompt=prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+        return create_agent(self.llm, tools, prompt=prompt)
 
     def process_nodes(self, nodes: list[dict], context: dict | None = None) -> None:
         """处理一批节点，更新角色卡片"""

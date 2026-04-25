@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.storage.json_storage import JsonStorage
 from src.models.narrative_node import NarrativeNode
+from src.models.character_card import CharacterCard
 from src.models.chunk import Chunk
 
 

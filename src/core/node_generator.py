@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterStateModel
-from src.core.agents.agent1_extractor import Agent1Extractor, create_llm, RelationshipStateChangeModel, InteractionModelCompat
+from src.core.agents.agent1_extractor import Agent1Extractor, create_llm
 from src.core.agents.agent2_thread_marker import Agent2ThreadMarker
 from src.core.agents.agent3_interesting_finder import Agent3InterestingFinder
 from src.core.agents.agent4_character_card import Agent4CharacterCard
@@ -127,24 +127,6 @@ class NarrativeNodeGenerator:
             valid_characters = [
                 CharacterStateModel(name=c.get('name', ''))
                 for c in validated.get('characters', []) if c.get('name')
-            ]
-
-            relationship_delta = [
-                RelationshipStateChangeModel(
-                    pair=r.get('pair', ''),
-                    from_state=r.get('from_state', ''),
-                    to_state=r.get('to_state', '')
-                )
-                for r in validated.get('relationship_delta', []) if r.get('pair')
-            ]
-
-            interactions = [
-                InteractionModelCompat(
-                    target=i.get("target", ""),
-                    type=i.get("type", "neutral"),
-                    intensity_delta=float(i.get("intensity_delta", 0.0)),
-                )
-                for i in validated.get("interactions", []) if i.get("target")
             ]
 
             # Generate unique node ID based on chunk prefix + beat index

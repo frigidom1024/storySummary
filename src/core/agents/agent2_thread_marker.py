@@ -6,8 +6,9 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from src.storage.book_repository import BookRepository
 
 from src.logging_config import debug as debug_log
 
@@ -74,13 +75,14 @@ def create_thread_tools(book_id: str):
     )
     @tool
     def get_existing_threads() -> str:
-        """Get all existing threads."""
+        """Get all existing threads. If no threads exist, return an empty list."""
         result = get_existing_threads_impl(book_id=book_id)
         return json.dumps(result if result else [], ensure_ascii=False)
 
     @tool
     def search_nodes(keyword: str) -> str:
         """Search nodes by character name or keyword."""
+
         result = search_nodes_impl(book_id=book_id, keyword=keyword)
         return json.dumps(result, ensure_ascii=False)
 
@@ -140,8 +142,7 @@ Recent context (for continuity):
 Output your final answer using the output_thread_markers tool."""),
         ])
 
-        agent = create_react_agent(self.llm, tools, prompt=prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+        return create_agent(self.llm, tools, prompt=prompt)
 
     async def mark(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
         """Mark nodes with thread information."""
