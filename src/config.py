@@ -21,6 +21,8 @@ class Config:
 
     # 数据库
     DATABASE_PATH = "data/story_summary.db"
+
+    VECTOR_DB_DIR = "data/vector_store"
     DATA_DIR = "data"
 
 

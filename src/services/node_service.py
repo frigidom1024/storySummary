@@ -3,18 +3,17 @@ from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.interfaces import INodeService
 from src.storage.database import Database
-from src.storage.book_storage import BookStorage
+from src.storage.book_repository import book_repository
 
 
 class NodeService(INodeService):
-    def __init__(self, db: Database, book_storage: BookStorage = None):
+    def __init__(self, db: Database):
         self.db = db
-        self.book_storage = book_storage or BookStorage()
 
     def save_nodes(self, book_id: str, nodes: List[NarrativeNode], structure: StoryStructure = None) -> None:
         """保存节点到 JSON 文件"""
-        # 使用 BookStorage 保存 nodes
-        self.book_storage.save_nodes(book_id, nodes)
+        # 使用 BookRepository 保存 nodes
+        book_repository.save_nodes(book_id, nodes)
 
         # 保存 structure（如果提供）
         if structure:
@@ -29,7 +28,7 @@ class NodeService(INodeService):
 
     def get_nodes(self, book_id: str) -> List[NarrativeNode]:
         """获取书籍所有节点"""
-        return self.book_storage.load_nodes(book_id)
+        return book_repository.load_nodes(book_id)
 
     def get_node(self, book_id: str, node_id: str) -> Optional[NarrativeNode]:
         """获取单个节点"""

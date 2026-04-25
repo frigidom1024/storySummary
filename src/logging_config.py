@@ -60,9 +60,19 @@ def debug(module: str, message: str, *args, **kwargs):
 def setup_logger(
     name: str = "story-summary",
     level: int = logging.INFO,
-    log_file: str = None
+    log_file: str = None,
+    enable_file_logging: bool = True,
+    log_dir: str = "logs"
 ) -> logging.Logger:
-    """Setup logger with console and optional file output."""
+    """Setup logger with console and optional file output.
+    
+    Args:
+        name: Logger name
+        level: Logging level
+        log_file: Specific log file path (overrides log_dir if provided)
+        enable_file_logging: Whether to enable file logging
+        log_dir: Directory to store log files
+    """
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -83,9 +93,17 @@ def setup_logger(
     logger.addHandler(console)
 
     # File handler (optional)
-    if log_file:
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+    if enable_file_logging:
+        if not log_file:
+            # Use default log file path
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+            log_file = str(log_path / "story_summary.log")
+        else:
+            # Ensure log file directory exists
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+        
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
@@ -97,5 +115,8 @@ def setup_logger(
 # Initialize debug on module import
 init_debug()
 
-# Default logger
-logger = setup_logger()
+# Default logger with file storage
+logger = setup_logger(
+    enable_file_logging=True,
+    log_dir="logs"
+)

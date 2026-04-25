@@ -65,26 +65,33 @@ class EpubReader(BookReader):
         return None
 
     def _extract_content(self):
-        """Extract text content from each chapter."""
+        """Extract text content from each chapter using XML parsing."""
         with zipfile.ZipFile(self.epub_path, "r") as zf:
             opf_path = self._find_opf(zf)
             if not opf_path:
                 return
 
             opf_content = zf.read(opf_path).decode("utf-8")
+            root = ET.fromstring(opf_content)
 
-            # Build manifest: id -> href (using regex for flexibility)
+            # Build manifest: id -> href using XML parsing
             manifest = {}
-            # Pattern handles attributes in any order
-            for match in re.finditer(r'<item\s+([^>]+)/>', opf_content):
-                attrs = match.group(1)
-                id_match = re.search(r'id=["\']([^"\']+)["\']', attrs)
-                href_match = re.search(r'href=["\']([^"\']+)["\']', attrs)
-                if id_match and href_match:
-                    manifest[id_match.group(1)] = href_match.group(1)
+            for item in root.iter():
+                tag = item.tag.split("}")[-1] if "}" in item.tag else item.tag
+                if tag == "item":
+                    item_id = item.get("id")
+                    href = item.get("href")
+                    if item_id and href:
+                        manifest[item_id] = href
 
-            # Get spine order
-            spine_ids = re.findall(r'<itemref[^>]+idref=["\']([^"\']+)["\'][^>]*/>', opf_content)
+            # Get spine order using XML parsing
+            spine_ids = []
+            for itemref in root.iter():
+                tag = itemref.tag.split("}")[-1] if "}" in itemref.tag else itemref.tag
+                if tag == "itemref":
+                    idref = itemref.get("idref")
+                    if idref:
+                        spine_ids.append(idref)
 
             order = 0
             for idref in spine_ids:
@@ -111,29 +118,51 @@ class EpubReader(BookReader):
                         order += 1
                 except KeyError:
                     continue
+                except UnicodeDecodeError:
+                    # Try with different encodings
+                    try:
+                        content = zf.read(href).decode("latin-1")
+                        text = self._strip_html(content)
+                        title = self._extract_title(content)
+
+                        if text.strip():
+                            self._chapters.append({
+                                "title": title or f"Chapter {order + 1}",
+                                "content": text,
+                                "order": order
+                            })
+                            order += 1
+                    except:
+                        continue
 
     def _strip_html(self, html: str) -> str:
-        """Remove HTML tags from content using regex-based approach."""
-        # Remove script and style elements first
-        html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-        html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        """Remove HTML tags from content using a more reliable approach."""
+        try:
+            # First, try to parse with XML
+            root = ET.fromstring(f"<div>{html}</div>")
+            text = ' '.join(root.itertext()).strip()
+        except:
+            # Fallback to regex if XML parsing fails
+            # Remove script and style elements first
+            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
 
-        # Handle CDATA sections
-        html = re.sub(r'<!\[CDATA\[.*?\]\]>', '', html, flags=re.DOTALL)
+            # Handle CDATA sections
+            html = re.sub(r'<!\[CDATA\[.*?\]\]>', '', html, flags=re.DOTALL)
 
-        # Replace common HTML entities (including numeric XML entities)
-        html = re.sub(r'&#(\d+);', self._decode_numeric_entity, html)
-        html = re.sub(r'&#x([0-9a-fA-F]+);', self._decode_hex_entity, html)
-        html = html.replace('&nbsp;', ' ')
-        html = html.replace('&amp;', '&')
-        html = html.replace('&lt;', '<')
-        html = html.replace('&gt;', '>')
-        html = html.replace('&quot;', '"')
-        html = html.replace('&#39;', "'")
-        html = html.replace('&apos;', "'")
+            # Replace common HTML entities (including numeric XML entities)
+            html = re.sub(r'&#(\d+);', self._decode_numeric_entity, html)
+            html = re.sub(r'&#x([0-9a-fA-F]+);', self._decode_hex_entity, html)
+            html = html.replace('&nbsp;', ' ')
+            html = html.replace('&amp;', '&')
+            html = html.replace('&lt;', '<')
+            html = html.replace('&gt;', '>')
+            html = html.replace('&quot;', '"')
+            html = html.replace('&#39;', "'")
+            html = html.replace('&apos;', "'")
 
-        # Remove all HTML tags
-        text = re.sub(r'<[^>]+>', '', html)
+            # Remove all HTML tags
+            text = re.sub(r'<[^>]+>', '', html)
 
         # Replace non-breaking spaces and clean up whitespace
         text = text.replace('\xa0', ' ')
@@ -156,20 +185,52 @@ class EpubReader(BookReader):
             return m.group(0)
 
     def _extract_title(self, html: str) -> Optional[str]:
-        """Try to extract title from HTML content."""
-        # Check title tag
-        match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-        if match:
-            title = match.group(1).strip()
-            if title:
-                return title
+        """Try to extract title from HTML content using XML parsing."""
+        try:
+            # Parse HTML with XML
+            root = ET.fromstring(f"<div>{html}</div>")
+            
+            # Check title tag first
+            for title_elem in root.iter():
+                tag = title_elem.tag.split("}")[-1] if "}" in title_elem.tag else title_elem.tag
+                if tag == "title":
+                    if title_elem.text:
+                        title = title_elem.text.strip()
+                        if title:
+                            return title
+            
+            # Check h1 tags
+            for h1_elem in root.iter():
+                tag = h1_elem.tag.split("}")[-1] if "}" in h1_elem.tag else h1_elem.tag
+                if tag == "h1":
+                    if h1_elem.text:
+                        title = h1_elem.text.strip()
+                        if title:
+                            return title
+            
+            # Check h2 tags as fallback
+            for h2_elem in root.iter():
+                tag = h2_elem.tag.split("}")[-1] if "}" in h2_elem.tag else h2_elem.tag
+                if tag == "h2":
+                    if h2_elem.text:
+                        title = h2_elem.text.strip()
+                        if title:
+                            return title
+        except:
+            # Fallback to regex if XML parsing fails
+            # Check title tag
+            match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
+            if match:
+                title = match.group(1).strip()
+                if title:
+                    return title
 
-        # Check first h1
-        match = re.search(r"<h1[^>]*>([^<]+)</h1>", html, re.IGNORECASE)
-        if match:
-            title = self._strip_html(match.group(1)).strip()
-            if title:
-                return title
+            # Check first h1
+            match = re.search(r"<h1[^>]*>([^<]+)</h1>", html, re.IGNORECASE)
+            if match:
+                title = self._strip_html(match.group(1)).strip()
+                if title:
+                    return title
 
         return None
 

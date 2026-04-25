@@ -1,6 +1,6 @@
 from .user import User
 from .book import Book
-from .narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
+from .narrative_node import NarrativeNode, CharacterStateModel
 from .story_structure import StoryStructure
 from .chunk import Chunk
 
@@ -9,7 +9,6 @@ __all__ = [
     "Book",
     "NarrativeNode",
     "StoryStructure",
-    "CharacterState",
-    "RelationshipStateChange",
+    "CharacterStateModel",
     "Chunk",
 ]

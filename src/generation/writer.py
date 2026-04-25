@@ -1,89 +1,134 @@
 import os
 from typing import Optional
-from langchain_core.messages import HumanMessage, SystemMessage
+
+from langchain.agents import create_agent
+
+from src.core.node_generator import create_llm
+from src.generation.context import StoryContext
+from src.generation.models import ChapterDraft
+from src.generation.research_tools import ManuscriptResearchToolkit
+from src.logging_config import debug
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
-from src.prompts import build_writing_prompt
-from src.core.node_generator import create_llm
-from src.logging_config import debug
+from src.prompts import build_style_system_prompt
 
 
 class ChapterWriter:
-    """单章生成器"""
+    """逐章写作 agent。"""
 
     def __init__(self, api_key: str = None, model: str = None, debug_mode: bool = False):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.model = model
         self.debug_mode = debug_mode
-        self.llm = create_llm(api_key=self.api_key, model=model, temperature=0.7)
+        self.llm = create_llm(api_key=self.api_key, model=self.model, temperature=0.7)
 
     async def write(
         self,
         chunk: Chunk,
         nodes: list[NarrativeNode],
-        context_summary: str,
+        completed_drafts: list[ChapterDraft],
+        global_outline: str,
+        book_id: str,
+        all_chunks: list[Chunk],
+        all_nodes: list[NarrativeNode],
+        style_profile: Optional[str] = None,
         style_key: Optional[str] = None,
         custom_rules: Optional[str] = None,
         reference_script: Optional[str] = None,
     ) -> str:
-        """
-        生成单章播客稿
+        chapter_title = chunk.chapter or f"第{chunk.order + 1}章"
+        nodes_text = self._format_nodes(nodes)
+        memory_text = StoryContext.build_memory(completed_drafts)
+        last_draft = completed_drafts[-1].chapter_text[-1200:] if completed_drafts else "（无）"
+        tools = ManuscriptResearchToolkit.create_tools(book_id=book_id, chunks=all_chunks, nodes=all_nodes)
 
-        节点仅用于快速把握结构，实际内容基于原文 chunk.text
-        """
-        # 节点只传简要索引，不传完整详情
-        nodes_index = self._format_nodes_brief(nodes)
+        system_prompt = build_style_system_prompt(style_key, custom_rules) + """
 
-        prompt_data = build_writing_prompt(
-            chapter_title=chunk.chapter or f"第{chunk.order + 1}章",
-            chapter_summary=f"约{len(chunk.text)}字",
-            core_themes="（由AI根据全文理解后补充）",
-            established_claims=context_summary or "（无）",
-            nodes_summary=nodes_index,
-            chunk_text=chunk.text,  # 实际写作素材
-            style_key=style_key,
-            custom_rules=custom_rules,
-            reference_script=reference_script,
+## 增量写作规则
+- 你每次只写当前章节，但必须保持全书叙事一致。
+- 已完成草稿代表既有口吻和视角，优先保持一致。
+- 必须先利用“全书故事大纲”确认伏笔、锚点和关系变化所在位置。
+- 本章事实以“本章完整原文”为准，不捏造剧情。
+- 写作前至少调用一次原文查找工具，必要时调用向量检索工具核验伏笔/回收点。
+- 直接输出本章口播稿，不加标题，不加解释。"""
+
+        user_prompt = f"""## 全书章节导览（用于建立全局理解）
+{global_outline}
+
+## 已完成草稿记忆
+{memory_text}
+
+## 风格画像（由风格学习 Agent 提炼）
+{style_profile or "（无）"}
+
+## 紧邻前文章节尾部（用于衔接语气）
+```上章
+{last_draft}
+```
+
+## 当前章节
+- 标题: {chapter_title}
+- 原文长度: {len(chunk.text)} 字
+
+## 当前章节节点索引
+{nodes_text}
+
+## 当前章节完整原文
+```原文
+{chunk.text}
+```
+"""
+
+        if reference_script:
+            user_prompt += f"""
+## 参考口播稿（仅学习风格）
+```参考
+{reference_script[:5000]}
+```
+"""
+
+        if self.debug_mode:
+            debug("writer", "[WRITE] chapter={} drafts={}", chapter_title, len(completed_drafts))
+            debug("writer", "[WRITE] prompt_length={}", len(user_prompt))
+
+        agent = create_agent(
+            model=self.llm,
+            tools=tools,
+            system_prompt=system_prompt,
+            debug=self.debug_mode,
+            name="chapter-writer-agent",
         )
-
-        if self.debug_mode:
-            debug("writer", "[WRITE] 生成章节: {}", chunk.chapter or f"第{chunk.order + 1}章")
-            debug("writer", "[WRITE] Prompt 长度: {} 字", len(prompt_data["user"]))
-            debug("writer", "[WRITE] Context Summary: {}",
-                  context_summary[:100] + "..." if len(context_summary) > 100 else context_summary)
-
-        messages = [
-            SystemMessage(content=prompt_data["system"]),
-            HumanMessage(content=prompt_data["user"])
-        ]
-
-        response = await self.llm.ainvoke(messages)
-        if not response.content:
+        response = await agent.ainvoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    }
+                ]
+            }
+        )
+        output = self._extract_output(response)
+        if not output:
             raise ValueError("LLM returned empty response")
-
-        result = response.content.strip()
-
-        if self.debug_mode:
-            debug("writer", "[WRITE] 生成完成: {} 字", len(result))
-
-        return result
-
-    def _format_nodes_brief(self, nodes: list[NarrativeNode]) -> str:
-        """简洁的节点格式 - 仅用于快速索引定位"""
-        lines = []
-        for i, n in enumerate(nodes):
-            lines.append(f"节点{i+1}: {n.scene}")
-        return "\n".join(lines)
+        return output
 
     def _format_nodes(self, nodes: list[NarrativeNode]) -> str:
-        """完整节点格式 - 已简化不再使用"""
-        lines = []
-        for i, n in enumerate(nodes):
-            chars = ", ".join([c.name for c in n.characters]) if n.characters else "无"
-            importance = getattr(n, 'importance', 0.5)
-            lines.append(
-                f"节点{i+1}: {n.scene} (重要性: {importance})\n"
-                f"  情境: {n.situation}\n"
-                f"  角色: {chars}"
-            )
-        return "\n\n".join(lines)
+        if not nodes:
+            return "（无节点）"
+        return "\n".join(f"节点{i + 1}: {n.scene}" for i, n in enumerate(nodes))
+
+    def _extract_output(self, response: dict) -> str:
+        messages = response.get("messages", []) if isinstance(response, dict) else []
+        if not messages:
+            return ""
+        last = messages[-1]
+        content = getattr(last, "content", "")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            return "".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in content
+            ).strip()
+        return str(content).strip()

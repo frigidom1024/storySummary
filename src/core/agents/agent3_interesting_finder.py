@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from src.core.agents.tools import AgentTools
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
 from src.logging_config import debug as debug_log
 
 logger = logging.getLogger("story-summary")
@@ -17,122 +19,133 @@ class InterestingPointResult(BaseModel):
     discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
 
 
-def create_interesting_llm(api_key: str | None = None) -> ChatOpenAI:
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-    api_base = os.getenv("DEEPSEEK_API_BASE")
-    kwargs = {"api_key": api_key, "model": model, "temperature": 0.7}
+def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
+    """Create LLM client."""
+    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
     if api_base:
-        kwargs["openai_api_base"] = api_base
-    return ChatOpenAI(**kwargs)
+        llm_kwargs["openai_api_base"] = api_base
+    elif "deepseek" in (model or "").lower():
+        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+    return ChatOpenAI(**llm_kwargs)
+
+
+def create_interesting_tools(book_id: str):
+    """Create tools for interesting points finder agent with auto-bound book_id."""
+
+    @tool
+    def output_discussion_prompts(prompts: str) -> str:
+        """Output the final discussion prompts JSON. Use this when you have completed the analysis."""
+        return prompts
+
+    return [output_discussion_prompts]
 
 
 class Agent3InterestingFinder:
-    """Agent3: 发现叙事中有趣的点，生成讨论话题
-
-    职责：
-    - 分析每个叙事节点，找出值得讨论的点
-    - 生成播客形式的讨论话题
-    - 识别伏笔、悬念、对比、反转等
-    """
+    """Agent3: 使用LangChain Agent发现叙事中的有趣点，生成讨论话题"""
 
     def __init__(self, api_key: str = None, book_id: str = None):
-        self.llm = create_interesting_llm(api_key=api_key) if api_key or os.getenv("DEEPSEEK_API_KEY") else None
-        self.agent_tools = AgentTools(book_id=book_id)
+        self.book_id = book_id
+        
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        api_base = os.getenv("DEEPSEEK_API_BASE")
+        
+        if api_key:
+            self.llm = create_llm(api_key=api_key, temperature=0.7, api_base=api_base)
+        else:
+            self.llm = None
 
-    def set_search_fn(self, fn):
-        self.agent_tools.set_search_fn(fn)
+    def _create_agent(self):
+        """Create a LangChain agent for interesting points finding."""
+        tools = create_interesting_tools(self.book_id) if self.book_id else []
+        
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""You are a creative content analyst. Your task is to find interesting points in narrative nodes and generate discussion prompts for podcast.
 
-    def set_get_thread_last_fn(self, fn):
-        self.agent_tools.set_get_thread_last_fn(fn)
+For each node, generate 1-3 discussion prompts that:
+1. Touch readers' emotional resonance points
+2. Provoke thinking or debate
+3. Reveal character motivations or deeper story meanings
 
-    def get_tools(self):
-        return self.agent_tools.get_tools()
+Discussion prompts should be in Chinese and be engaging."""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            HumanMessage(content="""Analyze these narrative nodes and generate discussion prompts:
 
-    async def find(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
-        """为每个节点发现有趣点
+Nodes:
+{nodes}
 
-        Args:
-            nodes: 叙事节点列表
-            context: 上下文信息，包含 chunk_text 等
-        """
-        if not nodes:
-            return []
+{context}
 
-        debug_log("agent3", "Agent3InterestingFinder.find called with {} nodes, context_keys={}",
-                  len(nodes), list(context.keys()) if context else [])
-
-        if self.llm is None:
-            debug_log("agent3", "No LLM configured, returning empty discussion_prompts")
-            return self._build_with_defaults(nodes)
-
-        # 构建 prompt，包含上下文
-        prompt = self._build_prompt(nodes, context)
-        response = await self.llm.ainvoke([
-            SystemMessage(content="You are a creative content analyst. Output ONLY JSON array."),
-            HumanMessage(content=prompt)
-        ])
-
-        content = response.content if getattr(response, "content", None) else "[]"
-        debug_log("agent3", "LLM response length={} preview={}", len(content), content[:200])
-
-        # 解析结果
-        import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-        if json_match:
-            content = json_match.group(1)
-
-        try:
-            llm_results = json.loads(content) if isinstance(json.loads(content), list) else []
-            debug_log("agent3", "Parsed {} results", len(llm_results))
-        except Exception as e:
-            logger.warning("Failed to parse interesting points: %s", content[:200])
-            debug_log("agent3", "Parse failed: {}, using defaults", str(e))
-            return self._build_with_defaults(nodes)
-
-        # 合并结果
-        return self._merge_results(nodes, llm_results)
-
-    def _build_prompt(self, nodes: list[dict], context: dict | None = None) -> str:
-        """构建提示词
-
-        Args:
-            nodes: 叙事节点列表
-            context: 上下文信息，包含 chunk_text 等
-        """
-        nodes_summary = []
-        for node in nodes:
-            nodes_summary.append({
-                "id": node.get("id", ""),
-                "scene": node.get("scene", ""),
-                "situation": node.get("situation", ""),
-                "turning_point": node.get("turning_point", ""),
-                "characters": [c.get("name", "") for c in node.get("characters", [])],
-            })
-
-        # 原始文本上下文
-        chunk_context = ""
-        if context and context.get("chunk_text"):
-            chunk_context = f"\n\n原始文本片段：\n{context['chunk_text'][:2000]}"  # 限制长度
-
-        return f"""分析以下叙事节点，为每个节点生成讨论话题（用于播客讨论）。{chunk_context}
-
-叙事节点：
-{json.dumps(nodes_summary, ensure_ascii=False, indent=2)}
-
-请为每个节点生成 1-3 个讨论话题。讨论话题应该：
-1. 触及读者情感共鸣点
-2. 引发思考或辩论
-3. 揭示角色动机或故事深层含义
-
-输出格式为 JSON 数组：
+Output format: JSON array with node_id and discussion_prompts array:
 [
   {{"node_id": "节点ID", "discussion_prompts": ["话题1", "话题2"]}},
   ...
 ]
 
-请用中文生成话题。
-"""
+Output your final answer using the output_discussion_prompts tool."""),
+        ])
+
+        agent = create_react_agent(self.llm, tools, prompt=prompt)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+
+    async def find(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
+        """为每个节点发现有趣点"""
+        if not nodes:
+            return []
+
+        debug_log("agent3", "Agent3InterestingFinder.find called with {} nodes", len(nodes))
+
+        if self.llm is None:
+            debug_log("agent3", "No LLM configured, returning empty discussion_prompts")
+            return self._build_with_defaults(nodes)
+
+        # 构建上下文
+        context_str = ""
+        if context and context.get("chunk_text"):
+            context_str = f"\n\n原始文本片段：\n{context['chunk_text'][:2000]}"
+
+        try:
+            agent_executor = self._create_agent()
+            
+            result = await agent_executor.ainvoke({
+                "nodes": json.dumps(nodes, ensure_ascii=False),
+                "context": context_str
+            })
+
+            output = result.get("output", "")
+            debug_log("agent3", "Agent output: {}", output[:500])
+
+            llm_results = self._parse_results(output)
+            
+        except Exception as e:
+            debug_log("agent3", "Agent execution failed: {}", str(e))
+            llm_results = []
+
+        return self._merge_results(nodes, llm_results)
+
+    def _parse_results(self, content: str) -> list:
+        """Parse discussion prompts from agent output."""
+        import re
+        
+        if not content:
+            return []
+
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        json_match = re.search(r'\[\s*\{[^}\]]*"node_id"\s*:[^}\]]*\}', content)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        logger.warning(f"Failed to parse discussion prompts from output: {content[:200]}")
+        return []
 
     def _merge_results(self, nodes: list[dict], llm_results: list[dict]) -> list[dict]:
         """合并 LLM 结果到节点"""

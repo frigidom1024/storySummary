@@ -1,281 +1,191 @@
-import os
+import inspect
 import re
-import json
 from pathlib import Path
-from typing import Optional, Any, Callable
-from datetime import datetime
+from typing import Any, Callable, Optional
 
-from src.models.narrative_node import NarrativeNode
-from src.models.chunk import Chunk
-from src.generation.models import ManuscriptResult, ChapterDraft
-from src.storage.database import Database
-from src.storage.book_storage import BookStorage
-from src.generation.state import WritingState, WritingPhase
-from src.generation.context import WritingContext
-from src.generation.writer import ChapterWriter
+from src.generation.models import ManuscriptResult
+from src.generation.outline_agent import OutlineAgent
 from src.generation.polish import PolishAgent
+from src.generation.state import WritingPhase, WritingState
+from src.generation.style_agent import StyleLearningAgent
+from src.generation.writer import ChapterWriter
 from src.logging_config import debug
-
-
-class DebugRecord:
-    """记录每一步的完整内容"""
-
-    def __init__(self):
-        self.data: dict[str, Any] = {
-            "created_at": datetime.now().isoformat(),
-            "phases": {}
-        }
-
-    def add_phase(self, name: str, content: dict):
-        self.data["phases"][name] = content
-
-    def add_prepare(self, nodes: list):
-        self.data["phases"]["prepare"] = {
-            "nodes_count": len(nodes),
-            "nodes": [self._node_to_dict(n) for n in nodes]
-        }
-
-    def add_writing_chapter(self, index: int, chunk: Chunk, nodes: list,
-                           prompt_context: str, generated_text: str):
-        self.data["phases"][f"writing_chapter_{index}"] = {
-            "chunk_id": chunk.id,
-            "chunk_title": chunk.chapter,
-            "chunk_text_length": len(chunk.text),
-            "chunk_text_preview": chunk.text[:500],
-            "nodes": [self._node_to_dict(n) for n in nodes],
-            "prompt_context": prompt_context,
-            "generated_text": generated_text,
-            "generated_text_length": len(generated_text)
-        }
-
-    def add_polish(self, input_text: str, output_text: str):
-        self.data["phases"]["polish"] = {
-            "input_length": len(input_text),
-            "input_text": input_text,
-            "output_length": len(output_text),
-            "output_text": output_text
-        }
-
-    def add_result(self, manuscript_text: str, chapters_written: int, total_chunks: int):
-        self.data["result"] = {
-            "manuscript_length": len(manuscript_text),
-            "manuscript_text": manuscript_text,
-            "chapters_written": chapters_written,
-            "total_chunks": total_chunks
-        }
-
-    def save(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _node_to_dict(self, n: NarrativeNode) -> dict:
-        return {
-            "id": n.id,
-            "scene": n.scene,
-            "situation": n.situation,
-            "narrative_role": n.narrative_role,
-            "turning_point": n.turning_point,
-            "emotional_arc": n.emotional_arc,
-            "mood_tone": n.mood_tone,
-            "characters": [{"name": c.name} for c in (n.characters or [])]
-        }
+from src.storage.book_repository import book_repository
+from src.storage.database import Database
 
 
 class ManuscriptPipeline:
-    """口播稿生成 Pipeline"""
+    """精简版口播稿生成流程。"""
 
-    def __init__(self, output_dir: str = "output", debug_mode: bool = False,
-                 style_key: str = None, custom_rules: str = None, reference_script: str = None,
-                 progress_callback: Callable[[int, str], None] = None):
+    def __init__(
+        self,
+        output_dir: str = "output",
+        debug_mode: bool = False,
+        style_key: str = None,
+        custom_rules: str = None,
+        reference_script: str = None,
+        progress_callback: Optional[Callable[[int, str], Any]] = None,
+    ):
         self.output_dir = output_dir
         self.debug_mode = debug_mode
         self.style_key = style_key
         self.custom_rules = custom_rules
         self.reference_script = reference_script
         self.progress_callback = progress_callback
+
         self.db = Database()
-        self.book_storage = BookStorage()
+        self.outliner = OutlineAgent(debug_mode=debug_mode)
+        self.style_learner = StyleLearningAgent(debug_mode=debug_mode)
         self.writer = ChapterWriter(debug_mode=debug_mode)
         self.polisher = PolishAgent(debug_mode=debug_mode)
-        self.debug_record: Optional[DebugRecord] = None
-
-    def _report_progress(self, progress: int, message: str):
-        """报告进度"""
-        if self.progress_callback:
-            self.progress_callback(progress, message)
 
     async def run(self, book_id: str) -> ManuscriptResult:
-        """运行生成流程"""
         book = self.db.get_book(book_id)
         if not book:
             raise ValueError(f"Book not found: {book_id}")
 
-        debug("pipeline", "[1] 书籍信息: book_id={} title={}", book_id, book.title)
+        chunks = book_repository.load_chunks(book_id)
+        nodes = book_repository.load_nodes(book_id)
+        if not chunks:
+            raise ValueError("No chunks found for this book")
 
-        # 初始化调试记录
-        if self.debug_mode:
-            self.debug_record = DebugRecord()
-
-        # 2. 加载或创建状态
         state_path = WritingState.get_state_path(book_id, self.output_dir, book.title)
-        if state_path.exists():
-            state = WritingState.load(state_path)
-            debug("pipeline", "[2] 恢复状态: phase={} chunk_index={} drafts_count={}",
-                  state.phase.value, state.current_chunk_index, len(state.drafts))
-        else:
-            state = WritingState(book_id=book_id, book_title=book.title)
-            debug("pipeline", "[2] 新建状态")
+        state = WritingState.load(state_path) if state_path.exists() else WritingState(
+            book_id=book_id,
+            book_title=book.title,
+        )
 
-        # 3. 加载 nodes 和 chunks
-        nodes = self._load_nodes(book_id)
-        chunks = self._load_chunks(book_id)
-        debug("pipeline", "[3] 加载数据: nodes_count={} chunks_count={}", len(nodes), len(chunks))
+        await self._report_progress(5, "正在构建全书故事大纲...")
+        outline = await self._load_or_build_outline(book_id, book.title, chunks, nodes)
+        style_profile = await self._load_or_build_style_profile(book.title, self.reference_script)
+        total = len(chunks)
+        debug("pipeline", "[RUN] title={} chunks={}", book.title, total)
 
-        if self.debug_mode:
-            self.debug_record.data["book_info"] = {
-                "book_id": book_id,
-                "title": book.title,
-                "nodes_count": len(nodes),
-                "chunks_count": len(chunks)
-            }
-            self.debug_record.data["all_chunks"] = [
-                {
-                    "id": c.id,
-                    "chapter": c.chapter,
-                    "text_length": len(c.text),
-                    "text_preview": c.text[:1000]
-                }
-                for c in chunks
-            ]
-
-        # 4. [PREPARE] 阶段
-        if state.phase == WritingPhase.PREPARE:
-            debug("pipeline", "[4] PREPARE 阶段")
-            await self._phase_prepare(nodes)
-            state.phase = WritingPhase.WRITING
-            state.save(state_path)
-
-        # 5. [WRITING] 阶段
-        debug("pipeline", "[5] WRITING 阶段: 从 chunk {} 开始", state.current_chunk_index)
-        context = WritingContext()
-        if state.drafts:
-            context.drafts = state.drafts
-            context._update_summary()
-            debug("pipeline", "[5] 恢复已有草稿: drafts_count={}", len(state.drafts))
-
-        while state.current_chunk_index < len(chunks):
-            chunk = chunks[state.current_chunk_index]
+        while state.current_chunk_index < total:
+            idx = state.current_chunk_index
+            chunk = chunks[idx]
             chunk_nodes = [n for n in nodes if n.parent_chunk_id == chunk.id]
+            chapter_name = chunk.chapter or f"第{chunk.order + 1}章"
 
-            # 报告进度：开始写章节
-            chapter_title = chunk.chapter or f"第{chunk.order + 1}章"
-            progress = int((state.current_chunk_index / len(chunks)) * 80)  # 写作阶段占80%
-            self._report_progress(progress, f"正在生成 {chapter_title}...")
-
-            debug("pipeline", "[5.1] 处理 Chunk {}/{}: chunk_id={} title={}",
-                  state.current_chunk_index + 1, len(chunks), chunk.id, chunk.chapter or '无标题')
-            debug("pipeline", "[5.2] 本章节点数: {} 个", len(chunk_nodes))
-
-            prompt_context = context.build_prompt_context(chunk, chunk_nodes)
-
+            await self._report_progress(int((idx / total) * 80), f"正在生成 {chapter_name}...")
             chapter_text = await self.writer.write(
                 chunk=chunk,
                 nodes=chunk_nodes,
-                context_summary=prompt_context,
+                completed_drafts=state.drafts,
+                global_outline=outline,
+                book_id=book_id,
+                all_chunks=chunks,
+                all_nodes=nodes,
+                style_profile=style_profile,
                 style_key=self.style_key,
                 custom_rules=self.custom_rules,
                 reference_script=self.reference_script,
             )
-
-            # 报告进度：章节完成
-            self._report_progress(progress + 5, f"已完成 {chapter_title}")
-            debug("pipeline", "[5.5] 生成章节长度: {} 字", len(chapter_text))
-
-            # 记录调试信息
-            if self.debug_mode:
-                self.debug_record.add_writing_chapter(
-                    index=state.current_chunk_index + 1,
-                    chunk=chunk,
-                    nodes=chunk_nodes,
-                    prompt_context=prompt_context,
-                    generated_text=chapter_text
-                )
-
-            context.add_draft(chunk.id, chapter_text)
-            state.drafts = context.drafts
-            state.current_chunk_index += 1
+            state.add_draft(chunk.id, chapter_text)
             state.save(state_path)
-            debug("pipeline", "[5.7] 已保存状态: chunk_index={}", state.current_chunk_index)
+            await self._report_progress(int((state.current_chunk_index / total) * 80), f"已完成 {chapter_name}")
 
-        # 6. [POLISHING] 阶段
-        debug("pipeline", "[6] POLISHING 阶段: 开始润色")
         state.phase = WritingPhase.POLISHING
         state.save(state_path)
-        self._report_progress(85, "正在润色全文...")
+        await self._report_progress(85, "正在润色全文...")
 
-        chunks_dict = {c.id: c for c in chunks}
-
-        full_draft = context.full_draft()
-
-        if self.debug_mode:
-            self.debug_record.data["polish_input"] = {
-                "drafts_count": len(context.drafts),
-                "full_draft_length": len(full_draft),
-                "full_draft": full_draft,
-                "chunks_for_reference": {
-                    cid: {
-                        "chapter": c.chapter,
-                        "text_length": len(c.text),
-                        "text": c.text
-                    }
-                    for cid, c in chunks_dict.items()
-                }
-            }
-
-        polished = await self.polisher.polish(context.drafts, chunks_dict)
-
-        debug("pipeline", "[6.2] 润色完成: {} 字", len(polished))
-
-        if self.debug_mode:
-            self.debug_record.add_polish(full_draft, polished)
-
-        # 7. 保存最终稿
-        safe = re.sub(r'[<>:"/\\|?*]', '_', book.title)
-        out_dir = Path(self.output_dir) / safe
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "manuscript.txt").write_text(polished, encoding="utf-8")
-
-        debug("pipeline", "[7] 已保存到: {}", out_dir / "manuscript.txt")
+        full_draft = state.full_draft()
+        polished = await self.polisher.polish(full_draft, chunks)
+        self._save_output(book.title, polished)
 
         state.phase = WritingPhase.DONE
         state.save(state_path)
-
-        # 保存调试记录
-        if self.debug_mode:
-            self.debug_record.add_result(polished, len(chunks), len(chunks))
-            debug_path = out_dir / "debug_record.json"
-            self.debug_record.save(debug_path)
-            debug("pipeline", "[DEBUG] 调试记录已保存到: {}", debug_path)
-
-        # 报告进度：完成
-        self._report_progress(100, "生成完成")
+        await self._report_progress(100, "生成完成")
 
         return ManuscriptResult(
             title=book.title,
-            drafts=[ChapterDraft(chunk_id="final", chapter_text=polished)],
+            drafts=state.drafts,
             phase=state.phase.value,
-            chapters_written=len(chunks),
-            total_chunks=len(chunks),
+            chapters_written=len(state.drafts),
+            total_chunks=total,
         )
 
-    def _load_nodes(self, book_id: str) -> list[NarrativeNode]:
-        return self.book_storage.load_nodes(book_id)
+    async def _report_progress(self, progress: int, message: str) -> None:
+        if not self.progress_callback:
+            return
+        result = self.progress_callback(progress, message)
+        if inspect.isawaitable(result):
+            await result
 
-    def _load_chunks(self, book_id: str) -> list[Chunk]:
-        return self.book_storage.load_chunks(book_id)
+    def _save_output(self, title: str, manuscript: str) -> None:
+        safe = re.sub(r'[<>:"/\\|?*]', "_", title)
+        out_dir = Path(self.output_dir) / safe
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "manuscript.txt").write_text(manuscript, encoding="utf-8")
 
-    async def _phase_prepare(self, nodes: list[NarrativeNode]) -> None:
-        """[PREPARE] 阶段：加载所有 nodes 建立全局理解"""
-        debug("pipeline", "[PREPARE] 收到 {} 个节点", len(nodes))
-        if self.debug_mode and self.debug_record:
-            self.debug_record.add_prepare(nodes)
+    async def _load_or_build_outline(self, book_id: str, title: str, chunks: list, nodes: list) -> str:
+        outline_path = self._outline_path(title)
+        if outline_path.exists():
+            return outline_path.read_text(encoding="utf-8")
+
+        try:
+            outline = await self.outliner.build_outline(book_id, chunks, nodes)
+        except Exception as exc:
+            debug("pipeline", "[OUTLINE] fallback due to error: {}", str(exc))
+            outline = self._build_outline_fallback(chunks, nodes)
+
+        outline_path.parent.mkdir(parents=True, exist_ok=True)
+        outline_path.write_text(outline, encoding="utf-8")
+        return outline
+
+    def _outline_path(self, title: str) -> Path:
+        safe = re.sub(r'[<>:"/\\|?*]', "_", title)
+        return Path(self.output_dir) / safe / "outline.txt"
+
+    async def _load_or_build_style_profile(self, title: str, reference_script: Optional[str]) -> str:
+        if not reference_script:
+            return ""
+
+        profile_path = self._style_profile_path(title)
+        if profile_path.exists():
+            return profile_path.read_text(encoding="utf-8")
+
+        try:
+            profile = await self.style_learner.learn(reference_script)
+        except Exception as exc:
+            debug("pipeline", "[STYLE] fallback due to error: {}", str(exc))
+            profile = self._build_style_profile_fallback(reference_script)
+
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_path.write_text(profile, encoding="utf-8")
+        return profile
+
+    def _style_profile_path(self, title: str) -> Path:
+        safe = re.sub(r'[<>:"/\\|?*]', "_", title)
+        return Path(self.output_dir) / safe / "style_profile.txt"
+
+    def _build_style_profile_fallback(self, reference_script: str) -> str:
+        text = reference_script.strip().replace("\r\n", "\n")
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        short_lines = [ln for ln in lines if len(ln) <= 30]
+        colloquial_hits = [k for k in ["是吧", "怎么说呢", "你像", "说实话"] if k in text]
+        return (
+            "风格总览:\n"
+            f"- 参考稿总长度: {len(text)} 字\n"
+            f"- 行数: {len(lines)}\n"
+            f"- 短句占比(<=30字): {int((len(short_lines)/max(1,len(lines)))*100)}%\n"
+            f"- 常见口头表达: {', '.join(colloquial_hits) if colloquial_hits else '未显著识别'}\n"
+            "- 写作建议: 保持口语化、短句推进、避免书面化总结。"
+        )
+
+    def _build_outline_fallback(self, chunks: list, nodes: list) -> str:
+        nodes_by_chunk: dict[str, list] = {}
+        for node in nodes:
+            nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
+
+        lines = []
+        for idx, chunk in enumerate(chunks, start=1):
+            chapter_name = chunk.chapter or f"第{idx}章"
+            chapter_nodes = nodes_by_chunk.get(chunk.id, [])
+            if chapter_nodes:
+                beats = [n.scene for n in chapter_nodes[:3] if n.scene]
+                preview = " / ".join(beats) if beats else chunk.text[:120].replace("\n", " ")
+            else:
+                preview = chunk.text[:120].replace("\n", " ")
+            lines.append(f"{idx}. {chapter_name}: {preview}...")
+        return "\n".join(lines)

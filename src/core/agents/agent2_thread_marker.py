@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from src.prompts.graph_builder_prompt import GRAPH_BUILDER_PROMPT
-from src.core.agents.tools import AgentTools
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.logging_config import debug as debug_log
 
@@ -15,9 +15,12 @@ logger = logging.getLogger("story-summary")
 
 
 class ThreadMarkResult(BaseModel):
+    """Agent2输出模型 - 与NarrativeNode的thread字段一致"""
     node_id: str
-    thread_hint: str = Field(default="main", description="main/new/uncertain")
-    link_confidence: float = 0.5
+    thread_id: str = Field(default="main", description="Thread ID")
+    thread_name: str = Field(default="", description="Thread name")
+    thread_prev_node_id: str = Field(default="", description="Previous node ID in same thread")
+    thread_next_node_id: str = Field(default="", description="Next node ID in same thread")
 
 
 class ThreadState:
@@ -38,117 +41,166 @@ class ThreadState:
     def get_last_node(self, thread_id: str) -> str:
         return self.last_node_in_thread.get(thread_id, "")
 
-    def find_best_thread(self, characters: list[str]) -> tuple[str | None, float]:
-        if not characters:
-            return None, 0.0
-        src = set(characters)
-        best_thread = None
-        best_ratio = 0.0
-        for thread_id, thread_chars in self.threads.items():
-            overlap = len(src & thread_chars)
-            ratio = overlap / len(src) if src else 0.0
-            if ratio > best_ratio:
-                best_thread = thread_id
-                best_ratio = ratio
-        return best_thread, best_ratio
-
-
-def create_thread_marker_llm(api_key: str | None = None) -> ChatOpenAI:
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-    api_base = os.getenv("DEEPSEEK_API_BASE")
-    kwargs = {"api_key": api_key, "model": model, "temperature": 0.3}
-    if api_base:
-        kwargs["openai_api_base"] = api_base
-    return ChatOpenAI(**kwargs)
-
-
-class Agent2ThreadMarker:
-    """Agent2: 叙事线标记
-
-    职责：
-    - 为每个节点分配 thread_id（main/支线等）
-    - 确定 thread_prev_node_id（前置节点）
-    - 确定 thread_next_node_id（后续节点）
-    - 维护 thread_state 状态
-    """
-
-    def __init__(self, api_key: str = None, book_id: str = None):
-        self.llm = create_thread_marker_llm(api_key=api_key) if api_key or os.getenv("DEEPSEEK_API_KEY") else None
-        self.thread_state = ThreadState()
-        self.agent_tools = AgentTools(book_id=book_id)
-
-    def set_search_fn(self, fn):
-        self.agent_tools.set_search_fn(fn)
-
-    def set_get_thread_last_fn(self, fn):
-        self.agent_tools.set_get_thread_last_fn(fn)
-
-    def get_tools(self):
-        return self.agent_tools.get_tools()
-
     def get_context_summary(self) -> dict:
         recent_nodes = []
-        for thread_id, last_node in list(self.thread_state.last_node_in_thread.items())[-5:]:
+        for thread_id, last_node in list(self.last_node_in_thread.items())[-5:]:
             recent_nodes.append({
                 "id": last_node,
-                "characters": list(self.thread_state.threads.get(thread_id, set())),
+                "characters": list(self.threads.get(thread_id, set())),
                 "thread_id": thread_id,
             })
         return {
             "recent_nodes": recent_nodes,
-            "thread_summaries": {k: list(v) for k, v in self.thread_state.threads.items()},
+            "thread_summaries": {k: list(v) for k, v in self.threads.items()},
         }
 
-    async def mark(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
-        """标记节点的叙事线信息
 
-        Args:
-            nodes: 叙事节点列表
-            context: 上下文信息，包含 chunk_text 等
-        """
+def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
+    """Create LLM client."""
+    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
+    if api_base:
+        llm_kwargs["openai_api_base"] = api_base
+    elif "deepseek" in (model or "").lower():
+        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+    return ChatOpenAI(**llm_kwargs)
+
+
+def create_thread_tools(book_id: str):
+    """Create tools for thread marker agent with auto-bound book_id."""
+    from src.core.tools.tool_executor import (
+        search_nodes_impl,
+        get_existing_threads_impl,
+    )
+    @tool
+    def get_existing_threads() -> str:
+        """Get all existing threads."""
+        result = get_existing_threads_impl(book_id=book_id)
+        return json.dumps(result if result else [], ensure_ascii=False)
+
+    @tool
+    def search_nodes(keyword: str) -> str:
+        """Search nodes by character name or keyword."""
+        result = search_nodes_impl(book_id=book_id, keyword=keyword)
+        return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def output_thread_markers(markers: str) -> str:
+        """Output the final thread markers JSON. Use this when you have completed the analysis."""
+        return markers
+
+    return [get_existing_threads, search_nodes, output_thread_markers]
+
+
+class Agent2ThreadMarker:
+    """Agent2: 使用LangChain Agent进行叙事线标记"""
+
+    def __init__(self, api_key: str = None, book_id: str = None):
+        self.book_id = book_id
+        self.thread_state = ThreadState()
+
+        self.book_repository = BookRepository()
+        
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        api_base = os.getenv("DEEPSEEK_API_BASE")
+        
+        if api_key:
+            self.llm = create_llm(api_key=api_key, temperature=0.3, api_base=api_base)
+        else:
+            self.llm = None
+
+    def _create_agent(self):
+        """Create a LangChain agent for thread marking."""
+        tools = create_thread_tools(self.book_id) if self.book_id else []
+        
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""You are a narrative structure analyst. Your task is to assign thread markers to narrative nodes.
+
+For each node, determine:
+- thread_id: Which thread this node belongs to (main or thread_N)
+- thread_name: Name of the thread
+- thread_prev_node_id: The previous node in the same thread (if any)
+
+Rules:
+1. Nodes with the same main characters should be in the same thread
+2. If characters from a previous thread appear again, continue that thread
+3. If new characters appear without previous context, start a new thread
+4. Always link to the last node of the same thread for continuity
+
+Output format: JSON array with node_id, thread_id, thread_name, thread_prev_node_id, thread_next_node_id"""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            HumanMessage(content="""Analyze these nodes and assign thread markers:
+
+Nodes:
+{nodes}
+
+Recent context (for continuity):
+{context}
+
+Output your final answer using the output_thread_markers tool."""),
+        ])
+
+        agent = create_react_agent(self.llm, tools, prompt=prompt)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+
+    async def mark(self, nodes: list[dict], context: dict | None = None) -> list[dict]:
+        """Mark nodes with thread information."""
         if not nodes:
             return []
-        debug_log("agent2", "Agent2ThreadMarker.mark called with {} nodes, context_keys={}",
-                  len(nodes), list(context.keys()) if context else [])
+        
+        debug_log("agent2", "Agent2ThreadMarker.mark called with {} nodes", len(nodes))
 
         if self.llm is None:
             debug_log("agent2", "LLM disabled, using defaults")
             return self._build_with_defaults(nodes)
 
-        context = self.get_context_summary()
-        debug_log("agent2", "Context: threads={} recent={}", list(context["thread_summaries"].keys()), len(context["recent_nodes"]))
-
-        prompt = GRAPH_BUILDER_PROMPT.format(
-            nodes=json.dumps(nodes, ensure_ascii=False),
-            recent_nodes=json.dumps(context["recent_nodes"], ensure_ascii=False),
-            thread_summaries=json.dumps(context["thread_summaries"], ensure_ascii=False),
-        )
-        response = await self.llm.ainvoke([
-            SystemMessage(content="You are a narrative structure analyst. Output ONLY JSON array."),
-            HumanMessage(content=prompt),
-        ])
-        content = response.content if getattr(response, "content", None) else "[]"
-        debug_log("agent2", "LLM response length={}", len(content))
-
-        import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-        if json_match:
-            content = json_match.group(1)
+        context_summary = self.thread_state.get_context_summary()
 
         try:
-            llm_results = json.loads(content)
-            debug_log("agent2", "Parsed {} results", len(llm_results))
+            agent_executor = self._create_agent()
+            
+            result = await agent_executor.ainvoke({
+                "nodes": json.dumps(nodes, ensure_ascii=False),
+                "context": json.dumps(context_summary, ensure_ascii=False)
+            })
+
+            output = result.get("output", "")
+            debug_log("agent2", "Agent output: {}", output[:500])
+
+            llm_results = self._parse_results(output)
+            
         except Exception as e:
-            logger.warning("Failed to parse thread results: %s", content[:200])
-            debug_log("agent2", "Parse failed, using defaults")
-            return self._build_with_defaults(nodes)
+            debug_log("agent2", "Agent execution failed: {}", str(e))
+            llm_results = []
 
         return self._merge_results(nodes, llm_results)
 
+    def _parse_results(self, content: str) -> list:
+        """Parse thread markers from agent output."""
+        import re
+        
+        if not content:
+            return []
+
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        json_match = re.search(r'\[\s*\{[^}\]]*"node_id"\s*:[^}\]]*\}', content)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        logger.warning(f"Failed to parse thread markers from output: {content[:200]}")
+        return []
+
     def _merge_results(self, nodes: list[dict], llm_results: list[dict]) -> list[dict]:
         """合并 LLM 结果，更新 thread 信息"""
-        debug_log("agent2", "_merge_results: {} nodes, {} llm_results", len(nodes), len(llm_results))
         result_map = {r.get("node_id", ""): r for r in llm_results}
 
         for idx, node in enumerate(nodes):
@@ -157,34 +209,54 @@ class Agent2ThreadMarker:
             llm_hint = result_map.get(node_id, {})
 
             # 分配 thread_id
-            thread_id, _ = self._assign_thread(llm_hint, characters)
+            thread_id = self._assign_thread(llm_hint, characters)
             node["thread_id"] = thread_id
+            node["thread_name"] = llm_hint.get("thread_name", "")
 
             # 设置前置节点
             node["thread_prev_node_id"] = self.thread_state.get_last_node(thread_id)
+            node["thread_next_node_id"] = ""
 
             debug_log("agent2", "  node[{}] id={} thread={} prev={}",
-                      idx, node_id, thread_id, node["thread_prev_node_id"])
+                     idx, node_id, thread_id, node["thread_prev_node_id"])
 
             # 更新 thread state
             self.thread_state.add_thread(thread_id, characters)
             self.thread_state.set_last_node(thread_id, node_id)
 
+        # 设置 next_node_id
+        for idx, node in enumerate(nodes[:-1]):
+            if node.get("thread_id") == nodes[idx + 1].get("thread_id"):
+                node["thread_next_node_id"] = nodes[idx + 1].get("id", "")
+
         debug_log("agent2", "Final threads: {}", list(self.thread_state.threads.keys()))
         return nodes
 
-    def _assign_thread(self, llm_hint: dict, characters: list[str]) -> tuple[str, str]:
+    def _assign_thread(self, llm_hint: dict, characters: list[str]) -> str:
         """根据 LLM 提示和角色分配 thread"""
-        hint = llm_hint.get("thread_hint", "main")
+        thread_id = llm_hint.get("thread_id", "")
 
-        if hint == "new" or not self.thread_state.threads:
-            thread_id = "main" if not self.thread_state.threads else f"thread_{len(self.thread_state.threads)}"
-            return thread_id, hint
+        if thread_id:
+            return thread_id
 
-        best_thread, ratio = self.thread_state.find_best_thread(characters)
-        if best_thread and ratio >= 0.5:
-            return best_thread, "main"
-        return f"thread_{len(self.thread_state.threads)}", hint
+        if not self.thread_state.threads:
+            return "main"
+
+        # 查找最佳匹配的 thread
+        src = set(characters)
+        best_thread = None
+        best_ratio = 0.0
+        for tid, thread_chars in self.thread_state.threads.items():
+            overlap = len(src & thread_chars)
+            ratio = overlap / len(src) if src else 0.0
+            if ratio > best_ratio and ratio >= 0.5:
+                best_thread = tid
+                best_ratio = ratio
+
+        if best_thread:
+            return best_thread
+        
+        return f"thread_{len(self.thread_state.threads)}"
 
     def _build_with_defaults(self, nodes: list[dict]) -> list[dict]:
         """使用默认值构建"""

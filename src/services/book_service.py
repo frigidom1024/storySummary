@@ -4,13 +4,11 @@ from typing import List, Optional
 from src.models.book import Book
 from src.services.interfaces import IBookService
 from src.storage.database import Database
-from src.storage.book_storage import BookStorage
 
 
 class BookService(IBookService):
-    def __init__(self, db: Database, book_storage: BookStorage = None):
+    def __init__(self, db: Database):
         self.db = db
-        self.book_storage = book_storage or BookStorage()
 
     def create_book(self, user_id: str, title: str) -> Book:
         """创建书籍"""

@@ -1,59 +1,98 @@
 """Agent4: Character Card Manager - 角色卡片维护"""
+import json
 import logging
 import os
 from typing import Optional
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
 from src.models.character_card import CharacterCard
-from src.core.agents.tools import AgentTools
 from src.logging_config import debug as debug_log
 
 logger = logging.getLogger("story-summary")
 
 
-def create_character_llm(api_key: str | None = None) -> ChatOpenAI:
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-    api_base = os.getenv("DEEPSEEK_API_BASE")
-    kwargs = {"api_key": api_key, "model": model, "temperature": 0.3}
+def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
+    """Create LLM client."""
+    model = model or os.getenv("LLM_MODEL", "deepseek-chat")
+    llm_kwargs = {"api_key": api_key, "model": model, **kwargs}
     if api_base:
-        kwargs["openai_api_base"] = api_base
-    return ChatOpenAI(**kwargs)
+        llm_kwargs["openai_api_base"] = api_base
+    elif "deepseek" in (model or "").lower():
+        llm_kwargs["openai_api_base"] = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+    return ChatOpenAI(**llm_kwargs)
+
+
+def create_character_tools(book_id: str):
+    """Create tools for character card agent."""
+    from src.core.tools.tool_executor import search_nodes_impl
+
+    @tool
+    def search_character_events(character_name: str) -> str:
+        """Search for all events related to a character."""
+        result = search_nodes_impl(book_id=book_id, keyword=character_name)
+        return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def output_character_analysis(analysis: str) -> str:
+        """Output the final character analysis JSON. Use this when you have completed the analysis."""
+        return analysis
+
+    return [search_character_events, output_character_analysis]
 
 
 class Agent4CharacterCard:
-    """Agent4: 维护角色卡片，分析角色关系和状态变化
-
-    职责：
-    - 追踪角色登场次数和关键事件
-    - 维护角色关系图谱
-    - 跟踪角色情绪状态变化
-    - 生成角色描述和人物小传
-    """
+    """Agent4: 使用LangChain Agent维护角色卡片，分析角色关系和状态变化"""
 
     def __init__(self, api_key: str = None, book_id: str = None):
         self.characters: dict[str, CharacterCard] = {}
-        self.llm = create_character_llm(api_key=api_key) if api_key or os.getenv("DEEPSEEK_API_KEY") else None
-        self.agent_tools = AgentTools(book_id=book_id)
+        self.book_id = book_id
+        
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        api_base = os.getenv("DEEPSEEK_API_BASE")
+        
+        if api_key:
+            self.llm = create_llm(api_key=api_key, temperature=0.3, api_base=api_base)
+        else:
+            self.llm = None
 
-    def set_search_fn(self, fn):
-        self.agent_tools.set_search_fn(fn)
+    def _create_agent(self):
+        """Create a LangChain agent for character analysis."""
+        tools = create_character_tools(self.book_id) if self.book_id else []
+        
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""You are a character analyst. Your task is to analyze characters and generate character descriptions.
 
-    def set_get_thread_last_fn(self, fn):
-        self.agent_tools.set_get_thread_last_fn(fn)
+For each character, analyze:
+1. Character personality traits
+2. Role in the story
+3. Relationship with other characters
+4. Emotional/psychological state change trajectory
 
-    def get_tools(self):
-        return self.agent_tools.get_tools()
+Output format: JSON with character analysis"""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            HumanMessage(content="""Analyze this character:
+
+Character info:
+{character_info}
+
+Recent events (for context):
+{recent_events}
+
+Output your final analysis using the output_character_analysis tool."""),
+        ])
+
+        agent = create_react_agent(self.llm, tools, prompt=prompt)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
 
     def process_nodes(self, nodes: list[dict], context: dict | None = None) -> None:
-        """处理一批节点，更新角色卡片
-
-        Args:
-            nodes: 叙事节点列表
-            context: 上下文信息，包含 chunk_text 等
-        """
-        debug_log("agent4", "Agent4 process_nodes called with {} nodes, current char count={}, context_keys={}",
-                  len(nodes), len(self.characters), list(context.keys()) if context else [])
+        """处理一批节点，更新角色卡片"""
+        debug_log("agent4", "Agent4 process_nodes called with {} nodes, current char count={}",
+                  len(nodes), len(self.characters))
 
         for node in nodes:
             self._process_node(node)
@@ -63,17 +102,15 @@ class Agent4CharacterCard:
     def _process_node(self, node: dict) -> None:
         """处理单个节点，提取角色信息"""
         characters = node.get("characters", [])
-        interactions = node.get("interactions", [])
         node_id = node.get("id", "")
         importance = float(node.get("importance", 0.5))
         scene = node.get("scene", "")
 
-        debug_log("agent4", "  Processing node_id={} chars={} interactions={} importance={}",
-                  node_id, [c.get("name") for c in characters], len(interactions), importance)
+        debug_log("agent4", "  Processing node_id={} chars={} importance={}",
+                  node_id, [c.get("name") for c in characters], importance)
 
         names = [c.get("name", "") for c in characters if c.get("name")]
 
-        # 创建或更新角色卡片
         for char in characters:
             name = char.get("name", "")
             if not name:
@@ -84,16 +121,12 @@ class Agent4CharacterCard:
                     character_id=name,
                     name=name,
                     first_seen=node_id,
-                    current_state=char.get("state_before", ""),
+                    current_state="",
                 )
                 debug_log("agent4", "    New character: {} first_seen={}", name, node_id)
 
             card = self.characters[name]
             card.increment_appearance()
-
-            # 更新情绪状态
-            if char.get("state_before"):
-                card.update_emotional_state(char["state_before"], node_id)
 
             # 记录重要事件
             if importance >= 0.8:
@@ -104,22 +137,8 @@ class Agent4CharacterCard:
             if card.total_appearances == 1 and scene:
                 card.first_seen_scene = scene
 
-        # 处理角色互动
-        source_char = names[0] if names else ""
-        for interaction in interactions:
-            debug_log("agent4", "    Interaction: {} -> {} type={} delta={}",
-                      source_char, interaction.get("target"), interaction.get("type"), interaction.get("intensity_delta"))
-
-            if source_char and source_char in self.characters:
-                self.characters[source_char].add_interaction(
-                    target=interaction.get("target", ""),
-                    interaction_type=interaction.get("type", "neutral"),
-                    intensity_delta=float(interaction.get("intensity_delta", 0.0)),
-                    node_id=node_id,
-                )
-
     async def analyze_character(self, character_name: str) -> dict:
-        """使用 LLM 分析角色，生成角色描述"""
+        """使用 LangChain Agent 分析角色，生成角色描述"""
         if not self.llm:
             return {}
 
@@ -130,7 +149,7 @@ class Agent4CharacterCard:
         debug_log("agent4", "Analyzing character: {}", character_name)
 
         # 构建角色上下文
-        context = {
+        character_info = {
             "name": character_name,
             "total_appearances": card.total_appearances,
             "first_seen": card.first_seen,
@@ -143,30 +162,21 @@ class Agent4CharacterCard:
             "emotional_history": card.emotional_history[-10:] if card.emotional_history else [],
         }
 
-        prompt = f"""分析以下角色，生成角色描述：
-
-角色信息：
-{context}
-
-请生成：
-1. 角色性格特点
-2. 在故事中的作用
-3. 与其他角色的关系概述
-4. 情感/心理状态变化轨迹
-
-请用中文回答，格式为JSON。
-"""
-
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are a character analyst. Output ONLY JSON."),
-                HumanMessage(content=prompt)
-            ])
-            content = response.content if getattr(response, "content", None) else "{}"
-            import json
-            result = json.loads(content)
+            agent_executor = self._create_agent()
+            
+            result = await agent_executor.ainvoke({
+                "character_info": json.dumps(character_info, ensure_ascii=False),
+                "recent_events": json.dumps(card.key_events[-5:] if card.key_events else [], ensure_ascii=False)
+            })
+
+            output = result.get("output", "{}")
+            debug_log("agent4", "Agent output: {}", output[:500])
+
+            analysis = json.loads(output) if output else {}
             debug_log("agent4", "Character analysis complete for {}", character_name)
-            return result
+            return analysis
+            
         except Exception as e:
             logger.warning("Failed to analyze character %s: %s", character_name, str(e))
             return {}

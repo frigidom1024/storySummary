@@ -9,8 +9,8 @@ Four-agent pipeline:
 import logging
 from dataclasses import dataclass
 from src.models.chunk import Chunk
-from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange, InteractionModel
-from src.core.agents.agent1_extractor import Agent1Extractor, create_llm
+from src.models.narrative_node import NarrativeNode, CharacterStateModel
+from src.core.agents.agent1_extractor import Agent1Extractor, create_llm, RelationshipStateChangeModel, InteractionModelCompat
 from src.core.agents.agent2_thread_marker import Agent2ThreadMarker
 from src.core.agents.agent3_interesting_finder import Agent3InterestingFinder
 from src.core.agents.agent4_character_card import Agent4CharacterCard
@@ -125,12 +125,12 @@ class NarrativeNodeGenerator:
         nodes = []
         for validated in beats:
             valid_characters = [
-                CharacterState(name=c.get('name', ''), state_before=c.get('state_before', ''))
+                CharacterStateModel(name=c.get('name', ''))
                 for c in validated.get('characters', []) if c.get('name')
             ]
 
             relationship_delta = [
-                RelationshipStateChange(
+                RelationshipStateChangeModel(
                     pair=r.get('pair', ''),
                     from_state=r.get('from_state', ''),
                     to_state=r.get('to_state', '')
@@ -139,7 +139,7 @@ class NarrativeNodeGenerator:
             ]
 
             interactions = [
-                InteractionModel(
+                InteractionModelCompat(
                     target=i.get("target", ""),
                     type=i.get("type", "neutral"),
                     intensity_delta=float(i.get("intensity_delta", 0.0)),
@@ -154,7 +154,6 @@ class NarrativeNodeGenerator:
 
             node = NarrativeNode(
                 id=node_id,
-                parent_chunk_id=chunk.id,
                 beat_index=validated['beat_index'],
                 scene=validated['scene'],
                 location=validated.get('location', ''),
@@ -164,17 +163,17 @@ class NarrativeNodeGenerator:
                 situation=validated.get('situation', ''),
                 turning_point=validated.get('turning_point', ''),
                 importance=validated.get('importance', 0.5),
-                emotional_arc=validated.get('emotional_arc', ''),
-                mood_tone=validated.get('mood_tone', ''),
-                discussion_prompts=validated.get('discussion_prompts', []),
-                relationship_delta=relationship_delta,
-                interactions=interactions,
                 time_label=validated.get('time_label', ''),
                 thread_id=validated.get('thread_id', 'main'),
                 thread_name=validated.get('thread_name', ''),
                 thread_prev_node_id=validated.get('thread_prev_node_id', ''),
                 thread_next_node_id=validated.get('thread_next_node_id', ''),
+                discussion_prompts=validated.get('discussion_prompts', [])
             )
+            
+            # Add parent_chunk_id as an attribute if needed
+            if hasattr(node, 'parent_chunk_id'):
+                node.parent_chunk_id = chunk.id
             nodes.append(node)
 
         debug("node_generator", "[Chunk {}] Generated {} nodes", chunk.id, len(nodes))

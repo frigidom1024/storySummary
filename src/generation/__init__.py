@@ -1,16 +1,23 @@
-from src.generation.models import ManuscriptResult
-from src.generation.state import WritingState, WritingPhase
-from src.generation.pipeline import ManuscriptPipeline
-from src.generation.context import WritingContext
-from src.generation.writer import ChapterWriter
-from src.generation.polish import PolishAgent
+"""精简版口播稿生成包。"""
+
+from .models import ChapterDraft, ManuscriptResult
+from .state import WritingPhase, WritingState
+from .outline_agent import OutlineAgent
+from .research_tools import ManuscriptResearchToolkit
+from .style_agent import StyleLearningAgent
+from .writer import ChapterWriter
+from .polish import PolishAgent
+from .pipeline import ManuscriptPipeline
 
 __all__ = [
-    "ManuscriptPipeline",
+    "ChapterDraft",
     "ManuscriptResult",
-    "WritingState",
     "WritingPhase",
-    "WritingContext",
+    "WritingState",
+    "OutlineAgent",
+    "ManuscriptResearchToolkit",
+    "StyleLearningAgent",
     "ChapterWriter",
     "PolishAgent",
+    "ManuscriptPipeline",
 ]

@@ -1,7 +1,7 @@
 from typing import Generator, Optional
 from fastapi import Header
 from src.storage.database import Database
-from src.storage.book_storage import BookStorage
+from src.storage.book_repository import book_repository
 from src.services.user_service import UserService
 from src.services.book_service import BookService
 from src.services.node_service import NodeService
@@ -22,11 +22,9 @@ def get_database() -> Database:
     return _db
 
 
-def get_book_storage() -> BookStorage:
-    global _book_storage
-    if _book_storage is None:
-        _book_storage = BookStorage("data")
-    return _book_storage
+def get_book_storage():
+    """Get book repository singleton."""
+    return book_repository
 
 
 def get_user_service() -> UserService:
@@ -39,14 +37,14 @@ def get_user_service() -> UserService:
 def get_book_service() -> BookService:
     global _book_service
     if _book_service is None:
-        _book_service = BookService(get_database(), get_book_storage())
+        _book_service = BookService(get_database())
     return _book_service
 
 
 def get_node_service() -> NodeService:
     global _node_service
     if _node_service is None:
-        _node_service = NodeService(get_database(), get_book_storage())
+        _node_service = NodeService(get_database())
     return _node_service
 
 

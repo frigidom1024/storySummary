@@ -8,7 +8,7 @@ from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
-from src.storage.book_storage import BookStorage
+from src.storage.book_repository import book_repository
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 import logging
@@ -22,7 +22,6 @@ class Analyzer:
 
     def __init__(self, db_path: str = "data/story_summary.db", data_path: str = "data"):
         self.db = Database(db_path)
-        self.book_storage = BookStorage()
         self.node_generator = NarrativeNodeGenerator()
         self.structure_builder = StructureBuilder()
         self.vector_store = VectorStore(f"{data_path}/vectors")
@@ -216,12 +215,12 @@ class Analyzer:
                 chapter=getattr(chunk, 'chapter', None),
                 order=getattr(chunk, 'order', 0)
             )
-        self.book_storage.append_chunk(book_id, chunk_obj)
+        book_repository.append_chunk(book_id, chunk_obj)
 
         # 追加保存 nodes
         for node in nodes:
             if node:
-                self.book_storage.append_node(book_id, node)
+                book_repository.append_node(book_id, node)
 
     def _save_structure(self, book_id: str, structure: StoryStructure):
         """Save story structure to storage."""

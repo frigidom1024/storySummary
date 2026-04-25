@@ -6,7 +6,7 @@ from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
-from src.storage.book_storage import BookStorage
+from src.storage.book_repository import book_repository
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.models.chunk import Chunk
@@ -21,6 +21,7 @@ class NovelToPodcastPipeline:
         api_key: str = None,
         model: str = None,
         user_id: str = None,
+        logger: logging.Logger = logger
     ):
         self.api_key = api_key
         self.model = model
@@ -29,7 +30,6 @@ class NovelToPodcastPipeline:
         self.structure_builder = StructureBuilder()
         self.db = Database(db_path)
         self.vector_store = VectorStore(vector_store_path)
-        self.book_storage = BookStorage()
         self.title = None
         self.book_id = None
 
@@ -96,6 +96,22 @@ class NovelToPodcastPipeline:
         chunks = AdaptiveChunker().chunk(novel_text)
         logger.info(f"[{title}] Generated {len(chunks)} chunks")
 
+        # Store original text chunks
+        if chunks:
+            for chunk in chunks:
+                if hasattr(chunk, 'content') and chunk.content:
+                    chapter_id = chunk.chapter or f"chapter_{chunks.index(chunk)}"
+                    chunk_id = chunk.id if hasattr(chunk, 'id') and chunk.id else f"chunk_{chunks.index(chunk)}"
+                    self.vector_store.add_original_text(
+                        book_id=book_id,
+                        text=chunk.content,
+                        chapter_id=chapter_id,
+                        chunk_id=chunk_id
+                    )
+                else:
+                    logger.warning(f"[{title}] Chunk {chunk_id} has no content, skipping.")
+            logger.info(f"[{title}] Stored {len(chunks)} original text chunks")
+
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
         all_nodes = []
         total_beats = 0
@@ -115,37 +131,28 @@ class NovelToPodcastPipeline:
             total_beats += len(nodes)
             logger.info(f"[{title}] Chunk {i+1}: {len(nodes)} beats generated")
 
-            # Link nodes and track state
-            prev_node = all_nodes[-1] if all_nodes else None
+            # Add nodes to all_nodes
+            all_nodes.extend(nodes)
 
-            for j, node in enumerate(nodes):
-                node.prev_node_id = prev_node.id if prev_node else ""
+            # Save chunks for tool queries (once per chunk)
+            book_repository.save_chunks(book_id, chunks[:i+1])
 
-                # Ensure node has an ID
-                if not node.id:
-                    node.id = f"n-{i}-{j}"
+            # Store in vector database incrementally
+            logger.info(f"[{title}] Storing chunk {i+1} in vector database...")
+            
+            # Store narrative nodes for this chunk
+            if nodes:
+                self.vector_store.add_nodes(book_id, nodes)
+                logger.info(f"[{title}] Stored {len(nodes)} narrative nodes from chunk {i+1}")
 
-                # Save to book repository (JSON files)
-                self.book_storage.append_node(book_id, node)
 
-                prev_node = node
-                all_nodes.append(node)
-
-        # Save chunks for tool queries
-        self.book_storage.save_chunks(book_id, chunks)
+        # Build structure 
+        if all_nodes:
+            structure = self.structure_builder.build(all_nodes)
 
         logger.info(f"[{title}] Total: {total_beats} narrative nodes generated")
-
-        # 3. Build story structure
-        logger.info(f"[{title}] Building story structure...")
-        structure = self.structure_builder.build(all_nodes)
-        logger.info(f"[{title}] Structure: opening={len(structure.opening)}, rising={len(structure.rising)}, climax={len(structure.climax)}, ending={len(structure.ending)}")
-
-        # 4. Save structure
-        if hasattr(self.db, 'save_structure'):
-            self.db.save_structure(book_id, structure)
         logger.info(f"[{title}] Pipeline complete!")
-
+        
         return {
             "title": title,
             "book_id": book_id,

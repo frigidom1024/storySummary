@@ -16,7 +16,7 @@ from src.services.analyzer import Analyzer
 from src.models.narrative_node import NarrativeNode
 from src.models.story_structure import StoryStructure
 from src.services.epub_parser import parse_epub
-from src.storage.book_storage import BookStorage
+
 from src.storage.database import Database
 from src.api.deps import get_book_storage
 from src.api.exceptions import (
@@ -36,7 +36,7 @@ async def upload_book(
     publisher: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service),
-    book_storage: BookStorage = Depends(get_book_storage)
+    book_storage = Depends(get_book_storage)
 ):
     """上传 epub 或 txt 文件创建书籍。"""
     # 文件类型检查
@@ -270,7 +270,7 @@ def delete_book(
     book_id: str,
     user_id: str = Depends(get_current_user_id),
     book_service: BookService = Depends(get_book_service),
-    book_storage: BookStorage = Depends(get_book_storage)
+    book_storage = Depends(get_book_storage)
 ):
     """删除书籍"""
     book = book_service.get_book(book_id)

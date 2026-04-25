@@ -130,6 +130,11 @@ class SmartChunker:
         r'楔\s*子',
     ]
 
+    EPUB_CHAPTER_PATTERNS = [
+        r'^##\s*juwairendi[_-]?(\d+)',
+        r'^##\s*([^\s]+)$',
+    ]
+
     MAX_CHUNK_CHARS = 30000
     MIN_CHUNK_CHARS = 500
     IDEAL_CHUNK_CHARS = 8000
@@ -156,6 +161,7 @@ class SmartChunker:
         self.japanese_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.JAPANESE_CHAPTER_PATTERNS]
         self.roman_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.ROMAN_CHAPTER_PATTERNS]
         self.special_patterns = [re.compile(p) for p in self.SPECIAL_MARKERS]
+        self.epub_chapter_patterns = [re.compile(p, re.MULTILINE) for p in self.EPUB_CHAPTER_PATTERNS]
 
     def _is_chapter_marker(self, text: str) -> Optional[tuple[str, str]]:
         text = text.strip()
@@ -203,6 +209,12 @@ class SmartChunker:
             if m:
                 return ('special', m.group(0))
 
+        # 检测EPUB章节标记 (## 局外人-1, ## juwairendi-11等)
+        for pattern in self.epub_chapter_patterns:
+            m = pattern.match(text)
+            if m:
+                return ('chapter', m.group(0).replace('##', '').strip())
+
         if self._looks_like_chapter_title(text):
             return ('chapter', text[:20])
 
@@ -238,12 +250,58 @@ class SmartChunker:
         if not paragraphs:
             return [Chunk(id=f"{chunk_prefix}-0000", text=text.strip(), order=0)]
 
+        # 检查是否有超长段落，如果有则按句子分割
+        paragraphs = self._split_long_paragraphs(paragraphs)
+
         marker_type = self._detect_overall_marker_type(paragraphs)
 
         if marker_type == 'none':
             return self._chunk_without_markers(paragraphs, chunk_prefix)
 
         return self._chunk_with_markers(paragraphs, chunk_prefix)
+
+    def _split_long_paragraphs(self, paragraphs: list[str]) -> list[str]:
+        """将超长段落按句子分割"""
+        result = []
+        for para in paragraphs:
+            if len(para) > self.max_chunk_chars:
+                # 尝试按句子分割
+                sentences = self._split_into_sentences(para)
+                if len(sentences) > 1:
+                    # 有多个句子，可以分割
+                    current = []
+                    current_len = 0
+                    for sentence in sentences:
+                        if current_len + len(sentence) > self.max_chunk_chars and current:
+                            result.append('\n\n'.join(current))
+                            current = [sentence]
+                            current_len = len(sentence)
+                        else:
+                            current.append(sentence)
+                            current_len += len(sentence)
+                    if current:
+                        result.append('\n\n'.join(current))
+                else:
+                    # 只有一个句子（可能是法文没有句号），按换行符分割
+                    lines = para.split('\n')
+                    current = []
+                    current_len = 0
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if current_len + len(line) > self.max_chunk_chars and current:
+                            result.append('\n'.join(current))
+                            current = [line]
+                            current_len = len(line)
+                        else:
+                            current.append(line)
+                            current_len += len(line)
+                    if current:
+                        result.append('\n'.join(current))
+            else:
+                result.append(para)
+        return result
 
     def _detect_overall_marker_type(self, paragraphs: list[str]) -> str:
         has_chinese = False
@@ -397,10 +455,14 @@ class SmartChunker:
                                 current_content.append(line)
                                 content_chars += len(line)
                     else:
-                        rest = para[len(marker_value):].strip() if len(marker_value) < len(para) else ""
-                        if rest and self._has_real_content(rest):
-                            current_content.append(rest)
-                            content_chars += len(rest)
+                        # 处理纯章节标题行（只有标题，没有后续内容）
+                        marker_in_para = para.find(marker_value)
+                        if marker_in_para >= 0:
+                            rest = para[marker_in_para + len(marker_value):].strip()
+                            if rest and self._has_real_content(rest):
+                                current_content.append(rest)
+                                content_chars += len(rest)
+                        # 如果没有后续内容，当前章节已经保存（finalize），下一段落会开始新章节
 
                 elif marker_type == 'special':
                     finalize()
