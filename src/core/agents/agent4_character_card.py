@@ -161,8 +161,8 @@ class Agent4CharacterCard:
 Existing character states (for context):
 {json.dumps(existing_chars_context, ensure_ascii=False)}
 
-Current chunk text (for additional context):
-{context.get("chunk_text", "")[:1000]}""")
+Current chunk text (原文，用于更准确的角色分析):
+{context.get("chunk_text", "")[:4000]}""")
                 ]
 
                 response = await self.llm.ainvoke(messages)
