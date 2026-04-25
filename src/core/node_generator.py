@@ -110,7 +110,7 @@ class NarrativeNodeGenerator:
         # === Agent4: 角色卡片维护 ===
         if self.pipeline_config.enable_agent4:
             debug("node_generator", "Agent4: Processing character cards for {} nodes", len(beats))
-            self.agent4.process_nodes(beats, context)
+            await self.agent4.process_nodes(beats, context)
             char_count = len(self.agent4.characters)
             debug("node_generator", "Agent4: Now tracking {} characters", char_count)
             for char_name, card in self.agent4.characters.items():
