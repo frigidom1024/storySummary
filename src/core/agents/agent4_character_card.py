@@ -294,7 +294,49 @@ Current chunk text (for additional context):
         Returns:
             包含 nodes 和 edges 的关系图字典
         """
+        nodes = []
+        edges = []
+        seen_edges = set()
+        all_char_names = set(self.characters.keys())
+
+        # First pass: collect all character names from relationships
+        for card in self.characters.values():
+            for target in card.relationships.keys():
+                all_char_names.add(target)
+
+        # Create nodes for all characters
+        for char_name in all_char_names:
+            if char_name in self.characters:
+                card = self.characters[char_name]
+                nodes.append({
+                    "id": char_name,
+                    "name": card.name,
+                    "current_state": card.current_state,
+                    "total_appearances": card.total_appearances
+                })
+            else:
+                # Character referenced in relationship but no card exists
+                nodes.append({
+                    "id": char_name,
+                    "name": char_name,
+                    "current_state": "",
+                    "total_appearances": 0
+                })
+
+        # Create edges from relationships
+        for char_name, card in self.characters.items():
+            for target, rel in card.relationships.items():
+                edge_key = tuple(sorted([char_name, target]))
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    edges.append({
+                        "source": char_name,
+                        "target": target,
+                        "type": rel.type,
+                        "intensity": rel.current_intensity
+                    })
+
         return {
-            "nodes": [],
-            "edges": []
+            "nodes": nodes,
+            "edges": edges
         }
