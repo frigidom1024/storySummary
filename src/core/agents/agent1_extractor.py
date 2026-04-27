@@ -54,7 +54,6 @@ Extract beats that represent meaningful narrative moments:
 - Important character interactions
 
 Output format: JSON array of beats, each beat must have:
-- id: beat ID (format n-{chunk_order}-{beat_index})
 - beat_index: order within chunk (0, 1, 2...)
 - scene: full scene description
 - location: simplified location
@@ -79,13 +78,17 @@ IMPORTANT: Output ONLY the JSON array in your response, no explanation."""
         else:
             self.llm = None
 
-    def _validate_beat(self, beat_dict: dict) -> Optional[dict]:
+    def _validate_beat(self, beat_dict: dict, chunk_order: int) -> Optional[dict]:
         """Validate and normalize a beat dict."""
-        required_fields = ['id', 'beat_index', 'scene']
+        required_fields = ['beat_index', 'scene']
         for field in required_fields:
             if field not in beat_dict or beat_dict[field] is None:
                 logger.warning(f"Beat missing required field '{field}': {beat_dict.get('id', 'unknown')}")
                 return None
+
+        # Construct id from chunk_order and beat_index
+        beat_index = int(beat_dict['beat_index'])
+        beat_dict['id'] = f"chunk-{chunk_order}-{beat_index}"
 
         beat_dict.setdefault('location', '')
         beat_dict.setdefault('scene_timing', '')
@@ -157,12 +160,15 @@ Output ONLY the JSON array in your response, no explanation."""
             beats_list = []
 
         validated_beats = []
+        invalid_count = 0
         for beat_dict in beats_list:
-            validated = self._validate_beat(beat_dict)
+            validated = self._validate_beat(beat_dict, chunk.order)
             if validated:
                 validated_beats.append(validated)
+            else:
+                invalid_count += 1
 
-        debug("agent1", "[Chunk {}] Validated {} beats", chunk.id, len(validated_beats))
+        debug("agent1", "[Chunk {}] Validated {} beats, {} invalid", chunk.id, len(validated_beats), invalid_count)
         return validated_beats
 
     def _parse_beats(self, content: str) -> list:

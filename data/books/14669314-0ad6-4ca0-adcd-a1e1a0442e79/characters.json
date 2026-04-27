@@ -1,0 +1,969 @@
+{
+  "characters": {
+    "默尔索": {
+      "character_id": "默尔索",
+      "name": "默尔索",
+      "first_seen": "chunk-0-0",
+      "first_seen_scene": "主角得知母亲去世的消息",
+      "current_state": "从麻木转向活跃、冲动、快乐，最终回归平静与疏离",
+      "total_appearances": 2,
+      "relationships": {
+        "老板": {
+          "type": "neutral",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.3,
+              "type": "tension"
+            },
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.5,
+              "type": "neutral"
+            }
+          ]
+        },
+        "艾玛纽埃尔": {
+          "type": "support",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            },
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.5,
+              "type": "support"
+            }
+          ]
+        },
+        "院长": {
+          "type": "neutral",
+          "current_intensity": 0.4,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.4,
+              "type": "neutral"
+            }
+          ]
+        },
+        "看门人": {
+          "type": "neutral",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.5,
+              "type": "neutral"
+            }
+          ]
+        },
+        "女护士": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "母亲的朋友们": {
+          "type": "tension",
+          "current_intensity": 0.4,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.4,
+              "type": "tension"
+            }
+          ]
+        },
+        "托马·佩雷": {
+          "type": "neutral",
+          "current_intensity": 0.3,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.3,
+              "type": "neutral"
+            }
+          ]
+        },
+        "神甫": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "护士代表": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "殡仪人员": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "瑟莱斯特": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        },
+        "老萨拉马诺": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "雷蒙·桑特斯": {
+          "type": "support",
+          "current_intensity": 0.6,
+          "history": [
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.6,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-0",
+          "emotion": "麻木、疏离、疲惫、冷漠"
+        },
+        {
+          "node_id": "chunk-2-0",
+          "emotion": "从麻木转向活跃、冲动、快乐，最终回归平静与疏离"
+        }
+      ],
+      "key_events": [
+        "chunk-0-0",
+        "chunk-2-0"
+      ]
+    },
+    "老板": {
+      "character_id": "老板",
+      "name": "老板",
+      "first_seen": "chunk-0-0",
+      "first_seen_scene": "主角得知母亲去世的消息",
+      "current_state": "客气、释然",
+      "total_appearances": 2,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-0",
+              "intensity": 0.3,
+              "type": "tension"
+            },
+            {
+              "node_id": "chunk-2-0",
+              "intensity": 0.5,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-0",
+          "emotion": "不悦但克制"
+        },
+        {
+          "node_id": "chunk-2-0",
+          "emotion": "客气、释然"
+        }
+      ],
+      "key_events": []
+    },
+    "艾玛纽埃尔": {
+      "character_id": "艾玛纽埃尔",
+      "name": "艾玛纽埃尔",
+      "first_seen": "chunk-0-1",
+      "first_seen_scene": "主角在瑟莱斯特的餐馆吃饭并出发",
+      "current_state": "兴奋、快乐",
+      "total_appearances": 2,
+      "relationships": {
+        "默尔索": {
+          "type": "support",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-1",
+              "intensity": 0.1,
+              "type": "neutral"
+            },
+            {
+              "node_id": "chunk-2-1",
+              "intensity": 0.5,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-1",
+          "emotion": "未直接表现"
+        },
+        {
+          "node_id": "chunk-2-1",
+          "emotion": "兴奋、快乐"
+        }
+      ],
+      "key_events": []
+    },
+    "院长": {
+      "character_id": "院长",
+      "name": "院长",
+      "first_seen": "chunk-0-2",
+      "first_seen_scene": "主角到达养老院与院长会面",
+      "current_state": "职业化、略带同情",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "support",
+          "current_intensity": 0.4,
+          "history": [
+            {
+              "node_id": "chunk-0-2",
+              "intensity": 0.4,
+              "type": "support"
+            }
+          ]
+        },
+        "托马·佩雷": {
+          "type": "support",
+          "current_intensity": 0.3,
+          "history": [
+            {
+              "node_id": "chunk-0-2",
+              "intensity": 0.3,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-2",
+          "emotion": "职业化、略带同情"
+        }
+      ],
+      "key_events": []
+    },
+    "看门人": {
+      "character_id": "看门人",
+      "name": "看门人",
+      "first_seen": "chunk-0-2",
+      "first_seen_scene": "主角到达养老院与院长会面",
+      "current_state": "健谈、略带愧疚",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "support",
+          "current_intensity": 0.5,
+          "history": [
+            {
+              "node_id": "chunk-0-2",
+              "intensity": 0.5,
+              "type": "support"
+            }
+          ]
+        },
+        "女护士": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-0-2",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-2",
+          "emotion": "健谈、略带愧疚"
+        }
+      ],
+      "key_events": []
+    },
+    "女护士": {
+      "character_id": "女护士",
+      "name": "女护士",
+      "first_seen": "chunk-0-3",
+      "first_seen_scene": "主角在停尸房守灵",
+      "current_state": "沉默、职业化",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-3",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "看门人": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-0-3",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-3",
+          "emotion": "沉默、职业化"
+        }
+      ],
+      "key_events": []
+    },
+    "母亲的朋友们": {
+      "character_id": "母亲的朋友们",
+      "name": "母亲的朋友们",
+      "first_seen": "chunk-0-4",
+      "first_seen_scene": "母亲的朋友们参加守夜",
+      "current_state": "悲伤、沉默、审判性",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "tension",
+          "current_intensity": 0.4,
+          "history": [
+            {
+              "node_id": "chunk-0-4",
+              "intensity": 0.4,
+              "type": "tension"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-4",
+          "emotion": "悲伤、沉默、审判性"
+        }
+      ],
+      "key_events": []
+    },
+    "托马·佩雷": {
+      "character_id": "托马·佩雷",
+      "name": "托马·佩雷",
+      "first_seen": "chunk-0-6",
+      "first_seen_scene": "主角与院长签署文件并准备葬礼",
+      "current_state": "悲伤、不安、执着",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.3,
+          "history": [
+            {
+              "node_id": "chunk-0-6",
+              "intensity": 0.3,
+              "type": "neutral"
+            }
+          ]
+        },
+        "院长": {
+          "type": "support",
+          "current_intensity": 0.3,
+          "history": [
+            {
+              "node_id": "chunk-0-6",
+              "intensity": 0.3,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-6",
+          "emotion": "悲伤、不安、执着"
+        }
+      ],
+      "key_events": []
+    },
+    "神甫": {
+      "character_id": "神甫",
+      "name": "神甫",
+      "first_seen": "chunk-0-7",
+      "first_seen_scene": "葬礼队伍出发前往教堂",
+      "current_state": "职业化、温和",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-7",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-7",
+          "emotion": "职业化、温和"
+        }
+      ],
+      "key_events": []
+    },
+    "护士代表": {
+      "character_id": "护士代表",
+      "name": "护士代表",
+      "first_seen": "chunk-0-7",
+      "first_seen_scene": "葬礼队伍出发前往教堂",
+      "current_state": "冷静、职业化",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-7",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-7",
+          "emotion": "冷静、职业化"
+        }
+      ],
+      "key_events": []
+    },
+    "殡仪人员": {
+      "character_id": "殡仪人员",
+      "name": "殡仪人员",
+      "first_seen": "chunk-0-7",
+      "first_seen_scene": "葬礼队伍出发前往教堂",
+      "current_state": "职业化、略显不耐烦",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-0-7",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-0-7",
+          "emotion": "职业化、略显不耐烦"
+        }
+      ],
+      "key_events": []
+    },
+    "主人公": {
+      "character_id": "主人公",
+      "name": "主人公",
+      "first_seen": "chunk-1-0",
+      "first_seen_scene": "主人公醒来，意识到自己向老板请假时忘了今天是周六，导致老板以为他请了四天假，但他认为母亲的葬礼定在昨天不是他的错。",
+      "current_state": "麻木、疏离、疲惫、冷漠、无聊、接受",
+      "total_appearances": 1,
+      "relationships": {
+        "老板（提及）": {
+          "type": "tension",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.2,
+              "type": "tension"
+            }
+          ]
+        },
+        "玛丽·卡多娜": {
+          "type": "support",
+          "current_intensity": 0.6,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.6,
+              "type": "support"
+            }
+          ]
+        },
+        "烟草店老板": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        },
+        "皮埃罗咖啡馆服务员": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        },
+        "路人": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        },
+        "运动员": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        },
+        "邻居": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-0",
+          "emotion": "麻木、疏离、疲惫、冷漠、无聊、接受"
+        }
+      ],
+      "key_events": [
+        "chunk-1-0"
+      ]
+    },
+    "玛丽·卡多娜": {
+      "character_id": "玛丽·卡多娜",
+      "name": "玛丽·卡多娜",
+      "first_seen": "chunk-1-1",
+      "first_seen_scene": "主人公在公共浴场游泳，遇到前同事玛丽，两人互动亲密，主人公得知玛丽晒得比他黑，邀请她晚上看电影。",
+      "current_state": "愉悦、好奇、微妙、自然",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "support",
+          "current_intensity": 0.6,
+          "history": [
+            {
+              "node_id": "chunk-1-1",
+              "intensity": 0.6,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-1",
+          "emotion": "愉悦、好奇、微妙、自然"
+        }
+      ],
+      "key_events": [
+        "chunk-1-1"
+      ]
+    },
+    "老板（提及）": {
+      "character_id": "老板（提及）",
+      "name": "老板（提及）",
+      "first_seen": "chunk-1-0",
+      "first_seen_scene": "主人公醒来，意识到自己向老板请假时忘了今天是周六，导致老板以为他请了四天假，但他认为母亲的葬礼定在昨天不是他的错。",
+      "current_state": "不悦、不满",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "tension",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-1-0",
+              "intensity": 0.2,
+              "type": "tension"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-0",
+          "emotion": "不悦、不满"
+        }
+      ],
+      "key_events": []
+    },
+    "母亲（提及）": {
+      "character_id": "母亲（提及）",
+      "name": "母亲（提及）",
+      "first_seen": "chunk-1-0",
+      "first_seen_scene": "主人公醒来，意识到自己向老板请假时忘了今天是周六，导致老板以为他请了四天假，但他认为母亲的葬礼定在昨天不是他的错。",
+      "current_state": "已故（无直接表现）",
+      "total_appearances": 1,
+      "relationships": {},
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-0",
+          "emotion": "已故（无直接表现）"
+        }
+      ],
+      "key_events": []
+    },
+    "烟草店老板": {
+      "character_id": "烟草店老板",
+      "name": "烟草店老板",
+      "first_seen": "chunk-1-4",
+      "first_seen_scene": "主人公站到阳台上，观察街道上的行人和景象，包括家庭散步、青年看电影、商店老板等。",
+      "current_state": "平静、日常",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-4",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-4",
+          "emotion": "平静、日常"
+        }
+      ],
+      "key_events": []
+    },
+    "皮埃罗咖啡馆服务员": {
+      "character_id": "皮埃罗咖啡馆服务员",
+      "name": "皮埃罗咖啡馆服务员",
+      "first_seen": "chunk-1-4",
+      "first_seen_scene": "主人公站到阳台上，观察街道上的行人和景象，包括家庭散步、青年看电影、商店老板等。",
+      "current_state": "日常、寂寥",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-4",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-4",
+          "emotion": "日常、寂寥"
+        }
+      ],
+      "key_events": []
+    },
+    "路人": {
+      "character_id": "路人",
+      "name": "路人",
+      "first_seen": "chunk-1-4",
+      "first_seen_scene": "主人公站到阳台上，观察街道上的行人和景象，包括家庭散步、青年看电影、商店老板等。",
+      "current_state": "日常、多样",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-4",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-4",
+          "emotion": "日常、多样"
+        }
+      ],
+      "key_events": []
+    },
+    "运动员": {
+      "character_id": "运动员",
+      "name": "运动员",
+      "first_seen": "chunk-1-5",
+      "first_seen_scene": "傍晚时分，电车运来体育馆观众和运动员，街道逐渐热闹，夜幕降临后人群散去。",
+      "current_state": "兴奋、喧闹",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-5",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-5",
+          "emotion": "兴奋、喧闹"
+        }
+      ],
+      "key_events": []
+    },
+    "邻居": {
+      "character_id": "邻居",
+      "name": "邻居",
+      "first_seen": "chunk-1-5",
+      "first_seen_scene": "傍晚时分，电车运来体育馆观众和运动员，街道逐渐热闹，夜幕降临后人群散去。",
+      "current_state": "日常、疲惫",
+      "total_appearances": 1,
+      "relationships": {
+        "主人公": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-1-5",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-1-5",
+          "emotion": "日常、疲惫"
+        }
+      ],
+      "key_events": []
+    },
+    "瑟莱斯特": {
+      "character_id": "瑟莱斯特",
+      "name": "瑟莱斯特",
+      "first_seen": "chunk-2-1",
+      "first_seen_scene": "默尔索和艾玛纽埃尔下班后观察海港，追卡车并跳上卡车，在瑟莱斯特餐厅吃饭，然后回家午睡。",
+      "current_state": "友善、日常",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-2-1",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-2-1",
+          "emotion": "友善、日常"
+        }
+      ],
+      "key_events": []
+    },
+    "老萨拉马诺": {
+      "character_id": "老萨拉马诺",
+      "name": "老萨拉马诺",
+      "first_seen": "chunk-2-3",
+      "first_seen_scene": "默尔索在楼道遇见老萨拉马诺和狗，萨拉马诺骂狗，默尔索问候未得回应。",
+      "current_state": "愤怒、压抑、暴力",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.2,
+          "history": [
+            {
+              "node_id": "chunk-2-3",
+              "intensity": 0.2,
+              "type": "neutral"
+            }
+          ]
+        },
+        "狗": {
+          "type": "tension",
+          "current_intensity": 0.7,
+          "history": [
+            {
+              "node_id": "chunk-2-3",
+              "intensity": 0.7,
+              "type": "tension"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-2-3",
+          "emotion": "愤怒、压抑、暴力"
+        }
+      ],
+      "key_events": []
+    },
+    "狗": {
+      "character_id": "狗",
+      "name": "狗",
+      "first_seen": "chunk-2-3",
+      "first_seen_scene": "默尔索在楼道遇见老萨拉马诺和狗，萨拉马诺骂狗，默尔索问候未得回应。",
+      "current_state": "恐惧、受虐、呜咽",
+      "total_appearances": 1,
+      "relationships": {
+        "老萨拉马诺": {
+          "type": "tension",
+          "current_intensity": 0.7,
+          "history": [
+            {
+              "node_id": "chunk-2-3",
+              "intensity": 0.7,
+              "type": "tension"
+            }
+          ]
+        },
+        "默尔索": {
+          "type": "neutral",
+          "current_intensity": 0.1,
+          "history": [
+            {
+              "node_id": "chunk-2-3",
+              "intensity": 0.1,
+              "type": "neutral"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-2-3",
+          "emotion": "恐惧、受虐、呜咽"
+        }
+      ],
+      "key_events": []
+    },
+    "雷蒙·桑特斯": {
+      "character_id": "雷蒙·桑特斯",
+      "name": "雷蒙·桑特斯",
+      "first_seen": "chunk-2-4",
+      "first_seen_scene": "默尔索遇见邻居雷蒙·桑特斯，雷蒙邀请他共进晚餐，讲述自己与情妇和兄弟打架的事。",
+      "current_state": "愤怒、寻求认同、满意、友好",
+      "total_appearances": 1,
+      "relationships": {
+        "默尔索": {
+          "type": "support",
+          "current_intensity": 0.6,
+          "history": [
+            {
+              "node_id": "chunk-2-4",
+              "intensity": 0.6,
+              "type": "support"
+            }
+          ]
+        }
+      },
+      "emotional_timeline": [
+        {
+          "node_id": "chunk-2-4",
+          "emotion": "愤怒、寻求认同、满意、友好"
+        }
+      ],
+      "key_events": [
+        "chunk-2-4"
+      ]
+    }
+  }
+}

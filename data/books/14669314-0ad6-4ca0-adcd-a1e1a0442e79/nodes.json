@@ -1,0 +1,953 @@
+{
+  "nodes": [
+    {
+      "id": "chunk-n000",
+      "beat_index": 0,
+      "scene": "主人公醒来，意识到今天是周六，老板不高兴是因为他请假包含了双休日，实际只请了两天假，但妈妈的葬礼在昨天举行。",
+      "location": "主人公的卧室",
+      "scene_timing": "清晨",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "老板"
+        }
+      ],
+      "event_summary": "主人公醒来后意识到今天是周六，老板对他请假两天不高兴的原因是因为包含了双休日，但妈妈的葬礼在昨天举行。",
+      "situation": "意识到请假误会",
+      "turning_point": "主人公意识到请假包含双休日，导致老板不满。",
+      "importance": 0.5,
+      "time_label": "PAST",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-0",
+      "thread_next_node_id": "n-1-1",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n000",
+      "beat_index": 0,
+      "scene": "主人公醒来，意识到今天是周六，老板不高兴是因为他请假包含了双休日，实际只请了两天假，但妈妈的葬礼在昨天举行。",
+      "location": "主人公的卧室",
+      "scene_timing": "清晨",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "老板"
+        }
+      ],
+      "event_summary": "主人公醒来后意识到今天是周六，老板对他请假两天不高兴的原因是因为包含了双休日，但妈妈的葬礼在昨天举行。",
+      "situation": "意识到请假误会",
+      "turning_point": "主人公意识到请假包含双休日，导致老板不满。",
+      "importance": 0.5,
+      "time_label": "PAST",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-0",
+      "thread_next_node_id": "n-1-1",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n001",
+      "beat_index": 1,
+      "scene": "主人公决定去游泳，在公共浴场遇到前同事玛丽·卡多娜，两人互动亲密。",
+      "location": "港口边的公共浴场",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "主人公去游泳，遇到前同事玛丽，两人在水中亲密接触，玛丽得知主人公母亲去世后略显瑟缩。",
+      "situation": "与玛丽水中亲密",
+      "turning_point": "玛丽得知主人公母亲去世。",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-1",
+      "thread_next_node_id": "n-1-2",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n001",
+      "beat_index": 1,
+      "scene": "主人公决定去游泳，在公共浴场遇到前同事玛丽·卡多娜，两人互动亲密。",
+      "location": "港口边的公共浴场",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "主人公去游泳，遇到前同事玛丽，两人在水中亲密接触，玛丽得知主人公母亲去世后略显瑟缩。",
+      "situation": "与玛丽水中亲密",
+      "turning_point": "玛丽得知主人公母亲去世。",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-1",
+      "thread_next_node_id": "n-1-2",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n002",
+      "beat_index": 2,
+      "scene": "玛丽和主人公晚上看电影，之后玛丽去了主人公家过夜。",
+      "location": "电影院和主人公家",
+      "scene_timing": "傍晚至夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "玛丽和主人公看电影，期间有亲密接触，散场后玛丽去了主人公家。",
+      "situation": "与玛丽共度夜晚",
+      "turning_point": "玛丽与主人公关系进一步发展。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-2",
+      "thread_next_node_id": "n-1-3",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n002",
+      "beat_index": 2,
+      "scene": "玛丽和主人公晚上看电影，之后玛丽去了主人公家过夜。",
+      "location": "电影院和主人公家",
+      "scene_timing": "傍晚至夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "玛丽和主人公看电影，期间有亲密接触，散场后玛丽去了主人公家。",
+      "situation": "与玛丽共度夜晚",
+      "turning_point": "玛丽与主人公关系进一步发展。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-2",
+      "thread_next_node_id": "n-1-3",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n003",
+      "beat_index": 3,
+      "scene": "主人公醒来发现玛丽已离开，意识到今天是周日，感到无聊，独自在公寓里活动。",
+      "location": "主人公的公寓",
+      "scene_timing": "早晨至中午",
+      "characters": [
+        {
+          "name": "主人公"
+        }
+      ],
+      "event_summary": "主人公醒来后玛丽已离开，他意识到今天是周日，感到无聊，煎蛋吃，整理旧报纸，最后站到阳台上。",
+      "situation": "周日无聊独处",
+      "turning_point": "主人公感到周日无聊，开始观察街道。",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-3",
+      "thread_next_node_id": "n-1-4",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n003",
+      "beat_index": 3,
+      "scene": "主人公醒来发现玛丽已离开，意识到今天是周日，感到无聊，独自在公寓里活动。",
+      "location": "主人公的公寓",
+      "scene_timing": "早晨至中午",
+      "characters": [
+        {
+          "name": "主人公"
+        }
+      ],
+      "event_summary": "主人公醒来后玛丽已离开，他意识到今天是周日，感到无聊，煎蛋吃，整理旧报纸，最后站到阳台上。",
+      "situation": "周日无聊独处",
+      "turning_point": "主人公感到周日无聊，开始观察街道。",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-3",
+      "thread_next_node_id": "n-1-4",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n004",
+      "beat_index": 4,
+      "scene": "主人公在阳台上观察街道，看到各色行人，包括一家人、郊区青年、运动员等，感受周日街景的变化。",
+      "location": "主人公卧室阳台",
+      "scene_timing": "下午至傍晚",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "街上的行人"
+        }
+      ],
+      "event_summary": "主人公在阳台上观察街道，看到一家人、郊区青年、运动员等，感受周日街景从热闹到寂静的变化。",
+      "situation": "观察周日街景",
+      "turning_point": "主人公从观察中感受到周日特有的寂寥。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-4",
+      "thread_next_node_id": "n-1-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n004",
+      "beat_index": 4,
+      "scene": "主人公在阳台上观察街道，看到各色行人，包括一家人、郊区青年、运动员等，感受周日街景的变化。",
+      "location": "主人公卧室阳台",
+      "scene_timing": "下午至傍晚",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "街上的行人"
+        }
+      ],
+      "event_summary": "主人公在阳台上观察街道，看到一家人、郊区青年、运动员等，感受周日街景从热闹到寂静的变化。",
+      "situation": "观察周日街景",
+      "turning_point": "主人公从观察中感受到周日特有的寂寥。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-4",
+      "thread_next_node_id": "n-1-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n005",
+      "beat_index": 5,
+      "scene": "夜幕降临，街道再次热闹，主人公吃晚饭后关窗，感叹一切还是老样子。",
+      "location": "主人公的公寓",
+      "scene_timing": "夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        }
+      ],
+      "event_summary": "夜幕降临后街道再次热闹，主人公吃晚饭，感到天凉关窗，心想妈妈已入葬，一切又回到老样子。",
+      "situation": "周日结束的感慨",
+      "turning_point": "主人公意识到生活恢复常态，妈妈去世后一切照旧。",
+      "importance": 0.9,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-5",
+      "thread_next_node_id": "n-1-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n005",
+      "beat_index": 5,
+      "scene": "夜幕降临，街道再次热闹，主人公吃晚饭后关窗，感叹一切还是老样子。",
+      "location": "主人公的公寓",
+      "scene_timing": "夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        }
+      ],
+      "event_summary": "夜幕降临后街道再次热闹，主人公吃晚饭，感到天凉关窗，心想妈妈已入葬，一切又回到老样子。",
+      "situation": "周日结束的感慨",
+      "turning_point": "主人公意识到生活恢复常态，妈妈去世后一切照旧。",
+      "importance": 0.9,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "n-1-5",
+      "thread_next_node_id": "n-1-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n000",
+      "beat_index": 0,
+      "scene": "主角得知母亲去世的消息",
+      "location": "阿尔及尔",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "老板"
+        }
+      ],
+      "event_summary": "主角收到母亲去世的电报，向老板请假，准备前往养老院。",
+      "situation": "母亲去世，主角请假",
+      "turning_point": "母亲去世的消息传来，主角决定去养老院",
+      "importance": 0.9,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-n001",
+      "thread_next_node_id": "chunk-0-1",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n001",
+      "beat_index": 1,
+      "scene": "主角在瑟莱斯特的餐馆吃饭并出发",
+      "location": "阿尔及尔",
+      "scene_timing": "下午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "艾玛纽埃尔"
+        }
+      ],
+      "event_summary": "主角在餐馆吃饭，众人表示哀悼，然后匆忙赶公交车。",
+      "situation": "主角匆忙出发去养老院",
+      "turning_point": "主角离开阿尔及尔前往养老院",
+      "importance": 0.5,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-0",
+      "thread_next_node_id": "chunk-0-2",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n002",
+      "beat_index": 2,
+      "scene": "主角到达养老院与院长会面",
+      "location": "马朗戈养老院",
+      "scene_timing": "下午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "院长"
+        },
+        {
+          "name": "看门人"
+        }
+      ],
+      "event_summary": "主角到达养老院，先与看门人交谈，然后与院长会面，了解母亲情况。",
+      "situation": "主角了解母亲在养老院生活",
+      "turning_point": "院长告知主角母亲已安顿好，主角接受现实",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-1",
+      "thread_next_node_id": "chunk-0-3",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n003",
+      "beat_index": 3,
+      "scene": "主角在停尸房守灵",
+      "location": "养老院停尸房",
+      "scene_timing": "傍晚至夜间",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "看门人"
+        },
+        {
+          "name": "女护士"
+        }
+      ],
+      "event_summary": "主角在停尸房守灵，拒绝看母亲最后一眼，与看门人交谈并喝咖啡抽烟。",
+      "situation": "主角在母亲棺材旁守夜",
+      "turning_point": "主角决定不看母亲遗体，表现出冷漠",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-2",
+      "thread_next_node_id": "chunk-0-4",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n004",
+      "beat_index": 4,
+      "scene": "母亲的朋友们参加守夜",
+      "location": "养老院停尸房",
+      "scene_timing": "夜间",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "看门人"
+        },
+        {
+          "name": "女护士"
+        },
+        {
+          "name": "母亲的朋友们"
+        }
+      ],
+      "event_summary": "母亲的朋友们进入停尸房守夜，一个老太太哭泣，主角感到疲惫和不适。",
+      "situation": "守夜中，主角被众人审视",
+      "turning_point": "主角感到被审判的错觉，加深孤独感",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-3",
+      "thread_next_node_id": "chunk-0-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n005",
+      "beat_index": 5,
+      "scene": "守夜结束，主角休息",
+      "location": "养老院",
+      "scene_timing": "黎明",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "看门人"
+        }
+      ],
+      "event_summary": "守夜结束，主角被守门人带去梳洗，喝咖啡，然后等待葬礼。",
+      "situation": "主角准备参加葬礼",
+      "turning_point": "主角从守夜中解脱，感到疲惫但轻松",
+      "importance": 0.4,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-4",
+      "thread_next_node_id": "chunk-0-6",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n006",
+      "beat_index": 6,
+      "scene": "主角与院长签署文件并准备葬礼",
+      "location": "养老院院长办公室",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "院长"
+        },
+        {
+          "name": "托马·佩雷"
+        }
+      ],
+      "event_summary": "主角签署文件，拒绝再看母亲一眼，院长安排葬礼细节，佩雷请求扶灵。",
+      "situation": "葬礼准备工作进行中",
+      "turning_point": "主角拒绝见母亲最后一面，强化冷漠形象",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-5",
+      "thread_next_node_id": "chunk-0-7",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n007",
+      "beat_index": 7,
+      "scene": "葬礼队伍出发前往教堂",
+      "location": "马朗戈乡村",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "院长"
+        },
+        {
+          "name": "神甫"
+        },
+        {
+          "name": "护士代表"
+        },
+        {
+          "name": "佩雷"
+        },
+        {
+          "name": "殡仪人员"
+        }
+      ],
+      "event_summary": "葬礼队伍出发，主角在烈日下行走，感到炎热和不适，佩雷跛脚跟随。",
+      "situation": "葬礼行进中，主角被炎热困扰",
+      "turning_point": "主角在自然环境中感到疏离和压抑",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-6",
+      "thread_next_node_id": "chunk-0-8",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n008",
+      "beat_index": 8,
+      "scene": "葬礼结束，主角返回",
+      "location": "马朗戈墓地及村庄",
+      "scene_timing": "上午至中午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "护士代表"
+        },
+        {
+          "name": "佩雷"
+        },
+        {
+          "name": "村民"
+        }
+      ],
+      "event_summary": "葬礼结束，主角回忆片段，包括佩雷哭泣和墓地场景，然后坐车返回。",
+      "situation": "葬礼完成，主角疲惫不堪",
+      "turning_point": "主角意识到葬礼的荒诞，渴望睡眠",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-0-7",
+      "thread_next_node_id": "",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0000"
+    },
+    {
+      "id": "chunk-n000",
+      "beat_index": 0,
+      "scene": "主人公醒来，意识到自己向老板请假时忘了今天是周六，导致老板以为他请了四天假，但他认为母亲的葬礼定在昨天不是他的错。",
+      "location": "主人公的卧室",
+      "scene_timing": "早晨",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "老板（提及）"
+        },
+        {
+          "name": "母亲（提及）"
+        }
+      ],
+      "event_summary": "主人公起床后意识到请假失误，但决定去游泳。",
+      "situation": "意识到请假失误，心情平静",
+      "turning_point": "主人公意识到请假错误，但决定继续日常活动。",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-n001",
+      "thread_next_node_id": "chunk-1-1",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n001",
+      "beat_index": 1,
+      "scene": "主人公在公共浴场游泳，遇到前同事玛丽，两人互动亲密，主人公得知玛丽晒得比他黑，邀请她晚上看电影。",
+      "location": "港口边上的公共浴场",
+      "scene_timing": "上午",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "主人公与玛丽游泳、调情，并邀请她看电影。",
+      "situation": "与玛丽享受亲密时光",
+      "turning_point": "主人公告知玛丽母亲去世，玛丽反应微妙。",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-0",
+      "thread_next_node_id": "chunk-1-2",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n002",
+      "beat_index": 2,
+      "scene": "傍晚，玛丽和主人公看完电影后，玛丽去了主人公家。",
+      "location": "电影院和主人公的家",
+      "scene_timing": "傍晚",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽·卡多娜"
+        }
+      ],
+      "event_summary": "看电影后，玛丽和主人公回家过夜。",
+      "situation": "与玛丽共度夜晚",
+      "turning_point": "玛丽留宿主人公家。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-1",
+      "thread_next_node_id": "chunk-1-3",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n003",
+      "beat_index": 3,
+      "scene": "周日早晨，主人公醒来发现玛丽已离开，感到无聊，独自在家抽烟、吃煎蛋，并整理旧报纸。",
+      "location": "主人公的卧室和家",
+      "scene_timing": "早晨至正午",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "玛丽（提及）"
+        }
+      ],
+      "event_summary": "主人公独自在家度过无聊的周日早晨。",
+      "situation": "周日无聊，独自在家",
+      "turning_point": "主人公感到无聊，开始回忆母亲。",
+      "importance": 0.5,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-2",
+      "thread_next_node_id": "chunk-1-4",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n004",
+      "beat_index": 4,
+      "scene": "主人公站到阳台上，观察街道上的行人和景象，包括家庭散步、青年看电影、商店老板等。",
+      "location": "主人公卧室的阳台，俯瞰市郊主干道",
+      "scene_timing": "下午",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "烟草店老板"
+        },
+        {
+          "name": "皮埃罗咖啡馆服务员"
+        },
+        {
+          "name": "路人"
+        }
+      ],
+      "event_summary": "主人公在阳台上观察周日街道的日常景象。",
+      "situation": "观察周日街道的百态",
+      "turning_point": "主人公感受到星期天的沉闷。",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-3",
+      "thread_next_node_id": "chunk-1-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n005",
+      "beat_index": 5,
+      "scene": "傍晚时分，电车运来体育馆观众和运动员，街道逐渐热闹，夜幕降临后人群散去。",
+      "location": "市郊主干道",
+      "scene_timing": "傍晚至夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        },
+        {
+          "name": "运动员"
+        },
+        {
+          "name": "路人"
+        },
+        {
+          "name": "邻居"
+        }
+      ],
+      "event_summary": "傍晚街道喧嚣后归于寂静，主人公感到疲惫。",
+      "situation": "夜晚街道恢复宁静",
+      "turning_point": "主人公意识到一天结束，母亲已下葬。",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-4",
+      "thread_next_node_id": "chunk-1-6",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n006",
+      "beat_index": 6,
+      "scene": "主人公回家做饭、吃饭，关窗时看到窗玻璃映出的餐桌，心想一切还是老样子。",
+      "location": "主人公的厨房和卧室",
+      "scene_timing": "夜间",
+      "characters": [
+        {
+          "name": "主人公"
+        }
+      ],
+      "event_summary": "主人公独自吃晚饭，反思生活如常。",
+      "situation": "生活回归日常，一切未变",
+      "turning_point": "主人公接受母亲去世后生活继续。",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-1-5",
+      "thread_next_node_id": "",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0001"
+    },
+    {
+      "id": "chunk-n000",
+      "beat_index": 0,
+      "scene": "默尔索在办公室工作，老板态度客气，询问母亲年龄后松了口气。默尔索处理提货单，中午十二点洗手离开去吃午饭。",
+      "location": "办公室",
+      "scene_timing": "上午至中午",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "老板"
+        }
+      ],
+      "event_summary": "默尔索在办公室工作，老板客气询问母亲年龄，默尔索回答后老板松了口气。默尔索中午离开去吃饭。",
+      "situation": "工作日常，老板态度微妙",
+      "turning_point": "老板对母亲年龄的反应暗示了某种释然",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-n001",
+      "thread_next_node_id": "chunk-2-1",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n001",
+      "beat_index": 1,
+      "scene": "默尔索和艾玛纽埃尔下班后观察海港，追卡车并跳上卡车，在瑟莱斯特餐厅吃饭，然后回家午睡。",
+      "location": "码头、瑟莱斯特餐厅、家",
+      "scene_timing": "中午至傍晚",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "艾玛纽埃尔"
+        },
+        {
+          "name": "瑟莱斯特"
+        }
+      ],
+      "event_summary": "默尔索和艾玛纽埃尔追卡车并跳上去，在餐厅吃饭喝酒，回家午睡后继续工作。",
+      "situation": "午后休闲与工作交替",
+      "turning_point": "追卡车的冒险行为展现默尔索的冲动",
+      "importance": 0.7,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-0",
+      "thread_next_node_id": "chunk-2-2",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n002",
+      "beat_index": 2,
+      "scene": "默尔索在傍晚沿着码头散步回家，心情愉快，天空呈绿色。",
+      "location": "码头",
+      "scene_timing": "傍晚",
+      "characters": [
+        {
+          "name": "默尔索"
+        }
+      ],
+      "event_summary": "默尔索下班后沿码头散步回家，感到快乐。",
+      "situation": "傍晚散步心情愉悦",
+      "turning_point": "默尔索感受到纯粹的快乐",
+      "importance": 0.5,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-1",
+      "thread_next_node_id": "chunk-2-3",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n003",
+      "beat_index": 3,
+      "scene": "默尔索在楼道遇见老萨拉马诺和狗，萨拉马诺骂狗，默尔索问候未得回应。",
+      "location": "楼道",
+      "scene_timing": "傍晚",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "老萨拉马诺"
+        },
+        {
+          "name": "狗"
+        }
+      ],
+      "event_summary": "默尔索在楼道遇见老萨拉马诺骂狗，狗呜呜叫，默尔索问候未获回应。",
+      "situation": "邻居与狗的紧张关系",
+      "turning_point": "展现邻居萨拉马诺的暴力与狗的受虐",
+      "importance": 0.6,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-2",
+      "thread_next_node_id": "chunk-2-4",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n004",
+      "beat_index": 4,
+      "scene": "默尔索遇见邻居雷蒙·桑特斯，雷蒙邀请他共进晚餐，讲述自己与情妇和兄弟打架的事。",
+      "location": "楼道、雷蒙家",
+      "scene_timing": "傍晚至夜间",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "雷蒙·桑特斯"
+        }
+      ],
+      "event_summary": "雷蒙邀请默尔索吃猪血肠和红酒，讲述与情妇的纠纷和打架事件，寻求建议。",
+      "situation": "邻居雷蒙倾诉情妇纠纷",
+      "turning_point": "雷蒙向默尔索敞开心扉，寻求帮助",
+      "importance": 0.8,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-3",
+      "thread_next_node_id": "chunk-2-5",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n005",
+      "beat_index": 5,
+      "scene": "雷蒙请求默尔索代写一封信给情妇，默尔索同意并写完信，雷蒙称他为朋友。",
+      "location": "雷蒙家",
+      "scene_timing": "夜间",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "雷蒙·桑特斯"
+        }
+      ],
+      "event_summary": "雷蒙请求默尔索代写一封羞辱情妇的信，默尔索同意并完成，雷蒙称他为朋友。",
+      "situation": "帮雷蒙写报复信",
+      "turning_point": "默尔索参与雷蒙的报复计划，关系深化",
+      "importance": 0.9,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-4",
+      "thread_next_node_id": "chunk-2-6",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    },
+    {
+      "id": "chunk-n006",
+      "beat_index": 6,
+      "scene": "默尔索离开雷蒙家，在楼道听见萨拉马诺房间里的狗呜咽声。",
+      "location": "楼道",
+      "scene_timing": "深夜",
+      "characters": [
+        {
+          "name": "默尔索"
+        },
+        {
+          "name": "雷蒙·桑特斯"
+        },
+        {
+          "name": "狗"
+        }
+      ],
+      "event_summary": "默尔索离开雷蒙家，在漆黑的楼道里听见萨拉马诺房间里狗的呜咽。",
+      "situation": "深夜楼道中的寂静与狗声",
+      "turning_point": "从人际互动回归孤独的感官体验",
+      "importance": 0.4,
+      "time_label": "NOW",
+      "thread_id": "main",
+      "thread_name": "",
+      "thread_prev_node_id": "chunk-2-5",
+      "thread_next_node_id": "",
+      "discussion_prompts": [],
+      "parent_chunk_id": "chunk-0002"
+    }
+  ]
+}

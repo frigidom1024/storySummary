@@ -115,6 +115,11 @@ class NovelToPodcastPipeline:
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
         all_nodes = []
         total_beats = 0
+
+        # For testing, limit to first N chunks to avoid long processing time
+        max_chunk = 5
+        chunks = chunks[:max_chunk]  # Limit to first N chunks for testing
+        
         for i, chunk in enumerate(chunks):
             logger.debug(f"[{title}] Processing chunk {i+1}/{len(chunks)}: {chunk.chapter or 'No chapter'}")
 
@@ -136,12 +141,6 @@ class NovelToPodcastPipeline:
 
             # Add nodes to all_nodes
             all_nodes.extend(nodes)
-
-            # Save chunks for tool queries (once per chunk)
-            book_repository.save_chunks(book_id, chunks[:i+1])
-
-            # Store in vector database incrementally
-            logger.info(f"[{title}] Storing chunk {i+1} in vector database...")
             
             # Store narrative nodes for this chunk
             if nodes:
@@ -152,7 +151,6 @@ class NovelToPodcastPipeline:
             if nodes:
                 for node in nodes:
                     book_repository.append_node(book_id, node)
-                book_repository.save_chunks(book_id, chunks[:i+1])
 
 
         # Build structure 

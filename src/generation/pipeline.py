@@ -55,6 +55,9 @@ class ManuscriptPipeline:
             book_title=book.title,
         )
 
+        total = len(chunks)
+        debug("pipeline", "[RUN] title={} chunks={}", book.title, total)
+
         while state.current_chunk_index < total:
             idx = state.current_chunk_index
             chunk = chunks[idx]
