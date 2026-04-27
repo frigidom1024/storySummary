@@ -176,8 +176,18 @@ Output ONLY the JSON array in your response, no explanation."""
         if not content:
             return []
 
+        # Strip markdown code blocks
+        cleaned = content.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
         try:
-            parsed = json.loads(content)
+            parsed = json.loads(cleaned)
             if isinstance(parsed, list):
                 return parsed
             if isinstance(parsed, dict) and 'beats' in parsed:
@@ -186,7 +196,7 @@ Output ONLY the JSON array in your response, no explanation."""
             pass
 
         # Try to find JSON array in content
-        json_match = re.search(r'\[\s*\{[^}\]]*"id"\s*:[^}\]]*\}', content)
+        json_match = re.search(r'\[\s*\{[^}\]]*"beat_index"\s*:[^}\]]*\}', cleaned)
         if json_match:
             try:
                 return json.loads(json_match.group(0))

@@ -129,10 +129,8 @@ class NarrativeNodeGenerator:
                 for c in validated.get('characters', []) if c.get('name')
             ]
 
-            # Generate unique node ID based on chunk prefix + beat index
-            beat_index = validated['beat_index']
-            chunk_prefix = chunk.id.rsplit('-', 1)[0] if '-' in chunk.id else chunk.id
-            node_id = f"{chunk_prefix}-n{beat_index:03d}"
+            # Use id from validated beat (constructed by agent1)
+            node_id = validated['id']
 
             node = NarrativeNode(
                 id=node_id,
