@@ -83,6 +83,33 @@ class ManuscriptRepository:
             return data.get("synopsis", "")
         return None
 
+    # === Chapter Drafts ===
+
+    def save_chapter_draft(self, book_id: str, chapter_id: str, draft: str) -> None:
+        """保存单个章节草稿"""
+        drafts = self.load_all_drafts(book_id)
+        drafts[chapter_id] = draft
+        self._write_json(self._drafts_file(book_id), drafts)
+
+    def load_chapter_draft(self, book_id: str, chapter_id: str) -> str | None:
+        """加载单个章节草稿"""
+        drafts = self.load_all_drafts(book_id)
+        return drafts.get(chapter_id)
+
+    def save_all_drafts(self, book_id: str, drafts: dict[str, str]) -> None:
+        """批量保存章节草稿"""
+        self._write_json(self._drafts_file(book_id), drafts)
+
+    def load_all_drafts(self, book_id: str) -> dict[str, str]:
+        """加载所有章节草稿"""
+        file_path = self._drafts_file(book_id)
+        if not file_path.exists():
+            return {}
+        data = self.json_storage.read(str(file_path))
+        if isinstance(data, dict):
+            return data
+        return {}
+
     # === Final Manuscript ===
 
     def save_final_manuscript(self, book_id: str, manuscript: str) -> None:
@@ -98,7 +125,7 @@ class ManuscriptRepository:
             return None
         return file_path.read_text(encoding="utf-8")
 
-    # === 工具方法 ===
+    # === Utility ===
 
     def delete_manuscript(self, book_id: str) -> None:
         """删除口播稿相关所有文件"""
