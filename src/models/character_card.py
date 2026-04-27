@@ -26,7 +26,7 @@ class CharacterCard(BaseModel):
     emotional_timeline: list[EmotionalSnapshot] = Field(default_factory=list)
     key_events: list[str] = Field(default_factory=list)
 
-    def add_interaction(self, target: str, interaction_type: str, intensity_delta: float, node_id: str) -> None:
+    def add_interaction(self, target: str, interaction_type: str, intensity_delta: float, node_id: str, description: str = "") -> None:
         if not target:
             return
         if target not in self.relationships:
@@ -35,7 +35,12 @@ class CharacterCard(BaseModel):
         if interaction_type:
             rel.type = interaction_type
         rel.current_intensity = max(0.0, min(1.0, rel.current_intensity + float(intensity_delta)))
-        rel.history.append({"node_id": node_id, "intensity": rel.current_intensity, "type": rel.type})
+        rel.history.append({
+            "node_id": node_id,
+            "intensity": rel.current_intensity,
+            "type": rel.type,
+            "description": description
+        })
 
     def update_emotional_state(self, emotion: str, node_id: str) -> None:
         if not emotion:

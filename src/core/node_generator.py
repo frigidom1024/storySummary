@@ -155,3 +155,47 @@ class NarrativeNodeGenerator:
 
         debug("node_generator", "[Chunk {}] Generated {} nodes", chunk.id, len(nodes))
         return nodes
+
+    @staticmethod
+    def link_nodes_globally(nodes: list[NarrativeNode], chunks: list[Chunk]) -> list[NarrativeNode]:
+        """全局链接所有 nodes 的 prev/next 关系，确保跨 chunk 链接正确。
+
+        规则：
+        - 按 chunk 顺序和 beat_index 排序
+        - 同一个 thread 内，第一个 node 的 prev 为空，最后一个 node 的 next 为空
+        - 跨 chunk 时，下一个 chunk 的第一个 node 的 prev 指向上一 chunk 的最后一个 node
+        """
+        if not nodes:
+            return nodes
+
+        # 按 parent_chunk_id 和 beat_index 排序
+        def sort_key(n: NarrativeNode) -> tuple:
+            chunk_order = 0
+            for i, c in enumerate(chunks):
+                if c.id == n.parent_chunk_id:
+                    chunk_order = i
+                    break
+            return (chunk_order, n.beat_index)
+
+        sorted_nodes = sorted(nodes, key=sort_key)
+
+        # 按 thread 分组
+        threads: dict[str, list[NarrativeNode]] = {}
+        for node in sorted_nodes:
+            thread_id = node.thread_id or "main"
+            threads.setdefault(thread_id, []).append(node)
+
+        # 链接每个 thread
+        for thread_id, thread_nodes in threads.items():
+            for i, node in enumerate(thread_nodes):
+                if i == 0:
+                    node.thread_prev_node_id = ""
+                else:
+                    node.thread_prev_node_id = thread_nodes[i - 1].id
+
+                if i == len(thread_nodes) - 1:
+                    node.thread_next_node_id = ""
+                else:
+                    node.thread_next_node_id = thread_nodes[i + 1].id
+
+        return sorted_nodes

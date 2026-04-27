@@ -153,12 +153,11 @@ class NovelToPodcastPipeline:
                     book_repository.append_node(book_id, node)
 
 
-        # Build structure 
+        # Build structure
         if all_nodes:
+            # 全局链接 nodes 的 prev/next 关系
+            all_nodes = NarrativeNodeGenerator.link_nodes_globally(all_nodes, chunks)
             structure = self.structure_builder.build(all_nodes)
-
-        logger.info(f"[{title}] Total: {total_beats} narrative nodes generated")
-        logger.info(f"[{title}] Pipeline complete!")
         
         return {
             "title": title,

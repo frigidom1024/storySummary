@@ -115,17 +115,19 @@ async def batch_summarize_chapters(
 ## 第1章: {chapter_name}
 节点线索：
 {node_text_1}
-原文预览：
-{chunk_preview_1}
+原文内容：
+{chunk_text_1}
 
 ## 第2章: {chapter_name}
 节点线索：
 {node_text_2}
-原文预览：
-{chunk_preview_2}
+原文内容：
+{chunk_text_2}
 
 ... (以此类推到第N章)
 ```
+
+注意：提供完整 chunk.text 而非 preview，以确保摘要质量。
 
 - [ ] **Step 3: 更新 build_outline() 调用新方法**
 

@@ -55,17 +55,21 @@ Extract beats that represent meaningful narrative moments:
 
 Output format: JSON array of beats, each beat must have:
 - beat_index: order within chunk (0, 1, 2...)
-- scene: full scene description
+- scene: vivid scene description with specific sensory details and actions (describe what actually happens, not summary)
 - location: simplified location
 - scene_timing: time period (午后/傍晚/夜间 etc)
-- characters: list of character names
-- event_summary: summary of the event
+- characters: list of character names (MUST use the exact names from known characters list)
+- event_summary: what happened in this beat
 - situation: one sentence describing the current situation (max 25 chars)
 - turning_point: what changed in this beat
-- importance: importance 0.0-1.0
+- importance: importance 0.0-1.0 (0.9-1.0 for major plot turns, 0.7-0.8 for key events, 0.5-0.6 for transitional scenes, below 0.5 for minor beats)
 - time_label: NOW/PAST/FUTURE
 
-IMPORTANT: Output ONLY the JSON array in your response, no explanation."""
+IMPORTANT:
+- Use EXACT character names from the known characters list below
+- NEVER use "主人公" or "主角" - use the actual character name
+- scene should be VIVID and DESCRIPTIVE, not summary: describe specific actions, expressions, dialogue snippets
+- Output ONLY the JSON array in your response, no explanation."""
 
     def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
         self.book_id = book_id
@@ -77,6 +81,28 @@ IMPORTANT: Output ONLY the JSON array in your response, no explanation."""
             self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7, api_base=api_base)
         else:
             self.llm = None
+
+    def get_known_characters_context(self) -> str:
+        """获取已知角色的详细信息，用于 AI 参考"""
+        if not self.book_id:
+            return ""
+        try:
+            from src.storage.book_repository import book_repository
+            characters = book_repository.load_characters(self.book_id)
+            if not characters:
+                return ""
+
+            lines = ["Known characters in this book:"]
+            for name, card in characters.items():
+                first_seen = f"(first seen: {card.first_seen_scene[:30]}...)" if card.first_seen_scene else ""
+                rels = []
+                for target, rel in card.relationships.items():
+                    rels.append(f"{target}({rel.type})")
+                rel_str = f", relations: {', '.join(rels)}" if rels else ""
+                lines.append(f"- {name} {first_seen}{rel_str}")
+            return "\n".join(lines)
+        except Exception:
+            return ""
 
     def _validate_beat(self, beat_dict: dict, chunk_order: int) -> Optional[dict]:
         """Validate and normalize a beat dict."""
@@ -130,6 +156,9 @@ IMPORTANT: Output ONLY the JSON array in your response, no explanation."""
 
         context_hint = "" if chunk.order == 0 else "You may consider previous context if available."
 
+        # Get known characters for reference
+        chars_hint = self.get_known_characters_context()
+
         try:
             user_message = f"""Analyze this text and extract narrative beats:
 
@@ -137,13 +166,16 @@ Text to analyze:
 {chunk.text}
 
 Chunk order: {chunk.order}
+{chars_hint}
 
 {context_hint}
+
+IMPORTANT: Use EXACT character names from the known characters list above. Do NOT use "主人公" or "主角".
 
 Output ONLY the JSON array in your response, no explanation."""
 
             response = await self.llm.ainvoke([
-                SystemMessage(content=self.SYSTEM_PROMPT),
+                SystemMessage(content=system_prompt),
                 HumanMessage(content=user_message)
             ])
 

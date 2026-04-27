@@ -82,11 +82,13 @@ Output a JSON array of character updates (for ALL characters in ALL nodes):
     "emotional_state": "紧张/平静/愤怒/微妙...",
     "is_key_event": true,
     "interactions": [
-      {"target": "OtherCharacter", "type": "tension", "intensity_delta": 0.3}
+      {"target": "OtherCharacter", "type": "tension", "intensity_delta": 0.3, "description": "具体互动描述：如对话内容、动作、表情等"}
     ]
   }
 ]
 ```
+
+IMPORTANT: Each interaction MUST include a "description" field explaining what happened specifically (dialogue snippet, action, gesture, etc).
 
 Analyze these nodes and output character updates:"""
 
@@ -250,7 +252,8 @@ Current chunk text (原文，用于更准确的角色分析):
                         target=interaction["target"],
                         interaction_type=interaction.get("type", "neutral"),
                         intensity_delta=interaction.get("intensity_delta", 0.0),
-                        node_id=self._find_node_id_for_character(nodes, char_name) or ""
+                        node_id=self._find_node_id_for_character(nodes, char_name) or "",
+                        description=interaction.get("description", "")
                     )
 
             # 标记关键事件
