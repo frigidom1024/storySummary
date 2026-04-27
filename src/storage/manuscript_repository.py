@@ -82,3 +82,18 @@ class ManuscriptRepository:
         if isinstance(data, dict):
             return data.get("synopsis", "")
         return None
+
+    # === Final Manuscript ===
+
+    def save_final_manuscript(self, book_id: str, manuscript: str) -> None:
+        """保存最终口播稿"""
+        file_path = self._final_manuscript_file(book_id)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(manuscript, encoding="utf-8")
+
+    def load_final_manuscript(self, book_id: str) -> str | None:
+        """加载最终口播稿"""
+        file_path = self._final_manuscript_file(book_id)
+        if not file_path.exists():
+            return None
+        return file_path.read_text(encoding="utf-8")
