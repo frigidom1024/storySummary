@@ -31,7 +31,7 @@ class OutlineAgent:
             if progress_callback:
                 progress_callback(msg)
 
-        chapter_summaries = await self._build_chapter_summaries(
+        chapter_summaries = await self.batch_summarize_chapters(
             chunks, nodes, progress_callback=progress_callback
         )
         emit("[outline] 阶段1 完成；阶段2：全书 outline 优化（Agent + 工具，可能较久）…")
@@ -96,13 +96,13 @@ class OutlineAgent:
         char_s = "、".join(names) if names else "（无）"
         return f"- 场景：{scene_s}；事件：{event_s}；人物：{char_s}"
 
-    async def _build_chapter_summaries(
+    async def batch_summarize_chapters(
         self,
         chunks: list[Chunk],
         nodes: list[NarrativeNode],
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
-        """阶段1：逐章摘要，产出章节初稿卡片。"""
+        """阶段1：批量摘要，每批5章调用一次 LLM。"""
 
         def emit(msg: str) -> None:
             if progress_callback:
@@ -113,12 +113,12 @@ class OutlineAgent:
             nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
 
         total = len(chunks)
-        emit(f"[outline] 阶段1 逐章摘要：共 {total} 章，节点 {len(nodes)} 个")
+        emit(f"[outline] 阶段1 批量摘要：共 {total} 章，节点 {len(nodes)} 个")
 
-        summaries: list[str] = []
+        # Build node_text for each chunk
+        chunk_node_info: dict[str, tuple[str, str]] = {}
         for idx, chunk in enumerate(chunks, start=1):
             chapter_name = chunk.chapter or f"第{idx}章"
-            emit(f"[outline] 摘要 {idx}/{total}：{chapter_name}（请求 LLM）…")
             chapter_nodes = nodes_by_chunk.get(chunk.id, [])
             node_lines: list[str] = []
             for n in chapter_nodes:
@@ -126,34 +126,48 @@ class OutlineAgent:
                 if line:
                     node_lines.append(line)
             node_text = "\n".join(node_lines) if node_lines else "- （无节点）"
-            chunk_preview = chunk.text.replace("\n", " ")
+            chunk_node_info[chunk.id] = (chapter_name, node_text)
+
+        # Group into batches of 5
+        batch_size = 5
+        batches: list[list[Chunk]] = []
+        for i in range(0, len(chunks), batch_size):
+            batches.append(chunks[i : i + batch_size])
+
+        summaries: list[str] = []
+        for batch_idx, batch in enumerate(batches, start=1):
+            emit(f"[outline] 批量摘要 {batch_idx}/{len(batches)}：处理 {len(batch)} 章（请求 LLM）…")
+
+            # Build batch prompt
+            chapter_blocks: list[str] = []
+            for chunk in batch:
+                chapter_name, node_text = chunk_node_info[chunk.id]
+                chapter_blocks.append(
+                    f"## 第{chapter_name}\n"
+                    f"节点线索：\n"
+                    f"{node_text}\n"
+                    f"原文内容：\n"
+                    f"{chunk.text}\n"
+                )
 
             system_prompt = """你是章节摘要助手。只总结当前章节，不跨章推理。
 - 忠于原文，不补写剧情。
-- 输出紧凑，突出事件推进、关系变化、伏笔信号和章节亮点。"""
-            user_prompt = f"""请为当前章节输出摘要卡片，使用以下结构：
-1) 章节一段话概述
-2) 关键事件
+- 输出紧凑，突出事件推进、关系变化、伏笔信号和章节亮点。
+- 每个章节输出格式：## 第X章: xxx\n[摘要内容]"""
 
+            user_prompt = f"请为以下 {len(batch)} 章生成摘要，输出 {len(batch)} 个独立章节摘要块：\n\n"
+            user_prompt += "\n\n".join(chapter_blocks)
 
-章节：{chapter_name}
-节点线索：
-{node_text}
-
-原文：
-{chunk_preview}
-"""
             response = await self.llm.ainvoke(
                 [
                     SystemMessage(content=system_prompt),
                     HumanMessage(content=user_prompt),
                 ]
             )
-            chapter_summary = (response.content or "").strip()
-            if not chapter_summary:
-                chapter_summary = f"{chapter_name}\n- 摘要生成失败"
-            summaries.append(f"## {chapter_name}\n{chapter_summary}")
-            emit(f"[outline] 摘要 {idx}/{total}：{chapter_name} 完成")
+            batch_result = (response.content or "").strip()
+            if batch_result:
+                summaries.append(batch_result)
+            emit(f"[outline] 批量摘要 {batch_idx}/{len(batches)}：完成")
 
         return "\n\n".join(summaries)
 
