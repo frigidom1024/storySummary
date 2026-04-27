@@ -26,7 +26,8 @@ class OutlineAgent:
         chunks: list[Chunk],
         nodes: list[NarrativeNode],
         progress_callback: Callable[[str], None] | None = None,
-    ) -> str:
+        reference_script: str | None = None,
+    ) -> str:  # 返回 JSON 字符串
         def emit(msg: str) -> None:
             if progress_callback:
                 progress_callback(msg)
