@@ -52,3 +52,20 @@ class ManuscriptRepository:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise
+
+    # === Synopsis ===
+
+    def save_synopsis(self, book_id: str, synopsis: str) -> None:
+        """保存故事梗概"""
+        data = {"synopsis": synopsis}
+        self._write_json(self._synopsis_file(book_id), data)
+
+    def load_synopsis(self, book_id: str) -> str | None:
+        """加载故事梗概"""
+        file_path = self._synopsis_file(book_id)
+        if not file_path.exists():
+            return None
+        data = self.json_storage.read(str(file_path))
+        if isinstance(data, dict):
+            return data.get("synopsis", "")
+        return None
