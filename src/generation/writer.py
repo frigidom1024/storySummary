@@ -52,14 +52,9 @@ class ChapterWriter:
 - 写作前至少调用一次原文查找工具，必要时调用向量检索工具核验伏笔/回收点。
 - 直接输出本章口播稿，不加标题，不加解释。"""
 
-        user_prompt = f"""## 全书章节导览（用于建立全局理解）
-{global_outline}
-
+        user_prompt = f"""
 ## 已完成草稿记忆
 {memory_text}
-
-## 风格画像（由风格学习 Agent 提炼）
-{style_profile or "（无）"}
 
 ## 紧邻前文章节尾部（用于衔接语气）
 ```上章
@@ -83,7 +78,7 @@ class ChapterWriter:
             user_prompt += f"""
 ## 参考口播稿（仅学习风格）
 ```参考
-{reference_script[:5000]}
+{reference_script}
 ```
 """
 

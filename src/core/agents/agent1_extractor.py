@@ -1,18 +1,15 @@
 """Agent1: Narrative Node Extractor - 叙事节点提取"""
-import os
 import json
 import logging
+import os
+import re
 from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import tool
-from langchain.agents import create_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterStateModel
-from src.prompts.base_node import BASE_NODE_PROMPT
 from src.logging_config import debug
 
 logger = logging.getLogger("story-summary")
@@ -32,6 +29,7 @@ class NarrativeBeatModel(BaseModel):
     importance: float = Field(default=0.5, description="Node importance 0.0-1.0")
     time_label: str = Field(default="NOW", description="Time label: NOW, PAST, FUTURE")
 
+
 def create_llm(api_key: str = None, model: str = None, api_base: str = None, **kwargs) -> ChatOpenAI:
     """Create LLM client."""
     model = model or os.getenv("LLM_MODEL", "deepseek-chat")
@@ -43,64 +41,10 @@ def create_llm(api_key: str = None, model: str = None, api_base: str = None, **k
     return ChatOpenAI(**llm_kwargs)
 
 
-def create_node_tools(book_id: str):
-    """Create tools for the agent with auto-bound book_id."""
-    from src.core.tools.tool_executor import (
-        get_previous_chunk_nodes_impl,
-    )
-
-    @tool
-    def get_previous_chunk_nodes() -> str:
-        """Return all nodes from the latest processed chunk.
-
-        Use this tool to understand immediate historical context before generating
-        nodes for the current chunk.
-
-        Returns:
-            A list of node summaries in JSON format.
-            if no previous chunk nodes exist, return an empty list.
-        """
-        result = get_previous_chunk_nodes_impl(book_id=book_id)
-        return json.dumps(result if result else [], ensure_ascii=False)
-
-    @tool
-    def output_beats(beats: str) -> str:
-        """Output the final JSON array of narrative beats.
-
-        Use this tool when you have completed the analysis and are ready to output
-        the final list of narrative beats.
-
-        Args:
-            beats: JSON string containing the array of narrative beats
-
-        Returns:
-            The input beats string, for confirmation.
-        """
-        return beats
-
-    return [get_previous_chunk_nodes, output_beats]
-
-
 class Agent1Extractor:
-    """Agent1: 使用LangChain Agent提取叙事节点"""
+    """Agent1: 使用直接LLM调用提取叙事节点"""
 
-    def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
-        self.book_id = book_id
-        self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
-        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-        api_base = os.getenv("DEEPSEEK_API_BASE")
-        
-        if api_key:
-            self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7, api_base=api_base)
-        else:
-            self.llm = None
-
-    def _create_agent(self, is_first_chunk: bool):
-        """Create a LangChain agent for the extractor."""
-        tools = create_node_tools(self.book_id) if self.book_id else []
-        
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are a professional narrative analyst. Your task is to extract narrative beats from the provided text.
+    SYSTEM_PROMPT = """You are a professional narrative analyst. Your task is to extract narrative beats from the provided text.
 
 Extract beats that represent meaningful narrative moments:
 - Character changes (entering/leaving)
@@ -122,21 +66,18 @@ Output format: JSON array of beats, each beat must have:
 - importance: importance 0.0-1.0
 - time_label: NOW/PAST/FUTURE
 
-Use tools to get context from previous chunks if needed, then output the final JSON using the output_beats tool."""),
-            MessagesPlaceholder(variable_name="chat_history", optional=True),
-            HumanMessage(content="""Analyze this text and extract narrative beats:
+IMPORTANT: Output ONLY the JSON array in your response, no explanation."""
 
-Text to analyze:
-{text}
+    def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
+        self.book_id = book_id
+        self.model_name = model or os.getenv("LLM_MODEL", "deepseek-chat")
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        api_base = os.getenv("DEEPSEEK_API_BASE")
 
-Chunk order: {chunk_order}
-
-{context_hint}
-
-Output your final answer using the output_beats tool."""),
-        ])
-
-        return create_agent(self.llm, tools, prompt=prompt)
+        if api_key:
+            self.llm = create_llm(api_key=api_key, model=self.model_name, temperature=0.7, api_base=api_base)
+        else:
+            self.llm = None
 
     def _validate_beat(self, beat_dict: dict) -> Optional[dict]:
         """Validate and normalize a beat dict."""
@@ -148,7 +89,17 @@ Output your final answer using the output_beats tool."""),
 
         beat_dict.setdefault('location', '')
         beat_dict.setdefault('scene_timing', '')
-        beat_dict.setdefault('characters', [])
+
+        # Normalize characters: ensure each character is a dict with 'name' key
+        raw_characters = beat_dict.get('characters', [])
+        normalized_characters = []
+        for c in raw_characters:
+            if isinstance(c, str):
+                normalized_characters.append({'name': c})
+            elif isinstance(c, dict) and c.get('name'):
+                normalized_characters.append(c)
+        beat_dict['characters'] = normalized_characters
+
         beat_dict.setdefault('event_summary', '')
         beat_dict.setdefault('situation', '')
         beat_dict.setdefault('turning_point', '')
@@ -168,31 +119,41 @@ Output your final answer using the output_beats tool."""),
         return beat_dict
 
     async def extract(self, chunk: Chunk) -> list[dict]:
-        """Extract narrative beats from a chunk using LangChain Agent."""
+        """Extract narrative beats from a chunk using direct LLM call."""
         if self.llm is None:
             raise ValueError("LLM API Key 未配置。请设置 DEEPSEEK_API_KEY 环境变量。")
 
-        debug("agent1", "[Chunk {}] Starting extraction with LangChain Agent", chunk.id)
+        debug("agent1", "[Chunk {}] Starting extraction with direct LLM", chunk.id)
 
-        is_first_chunk = chunk.order == 0
-        context_hint = "" if is_first_chunk else "You may use tools to get context from previous chunks."
+        context_hint = "" if chunk.order == 0 else "You may consider previous context if available."
 
         try:
-            agent_executor = self._create_agent(is_first_chunk)
-            
-            result = await agent_executor.ainvoke({
-                "text": chunk.text,
-                "chunk_order": chunk.order,
-                "context_hint": context_hint
-            })
+            user_message = f"""Analyze this text and extract narrative beats:
 
-            output = result.get("output", "")
-            debug("agent1", "[Chunk {}] Agent output: {}", chunk.id, output[:500])
+Text to analyze:
+{chunk.text}
+
+Chunk order: {chunk.order}
+
+{context_hint}
+
+Output ONLY the JSON array in your response, no explanation."""
+
+            response = await self.llm.ainvoke([
+                SystemMessage(content=self.SYSTEM_PROMPT),
+                HumanMessage(content=user_message)
+            ])
+
+            output = response.content if hasattr(response, 'content') and response.content else ""
+            debug("agent1", "[Chunk {}] LLM output: {}", chunk.id, str(output)[:500])
 
             beats_list = self._parse_beats(output)
-            
+
+            if not beats_list and output:
+                logger.warning(f"[Chunk {chunk.id}] Failed to parse beats from output: {output[:200]}")
+
         except Exception as e:
-            debug("agent1", "[Chunk {}] Agent execution failed: {}", chunk.id, str(e))
+            debug("agent1", "[Chunk {}] LLM execution failed: {}", chunk.id, str(e))
             beats_list = []
 
         validated_beats = []
@@ -205,9 +166,7 @@ Output your final answer using the output_beats tool."""),
         return validated_beats
 
     def _parse_beats(self, content: str) -> list:
-        """Parse beats from agent output."""
-        import re
-        
+        """Parse beats from LLM output."""
         if not content:
             return []
 
@@ -220,6 +179,7 @@ Output your final answer using the output_beats tool."""),
         except json.JSONDecodeError:
             pass
 
+        # Try to find JSON array in content
         json_match = re.search(r'\[\s*\{[^}\]]*"id"\s*:[^}\]]*\}', content)
         if json_match:
             try:

@@ -41,6 +41,10 @@ class BookRepository:
         """获取 chunks.json 文件路径"""
         return str(self._book_dir(book_id) / "chunks.json")
 
+    def _characters_file(self, book_id: str) -> str:
+        """获取 characters.json 文件路径"""
+        return str(self._book_dir(book_id) / "characters.json")
+
     def _validate_id(self, id_str: str) -> None:
         """验证 ID 格式，防止路径遍历"""
         clean = id_str.replace('-', '').replace('_', '')
@@ -220,6 +224,51 @@ class BookRepository:
     def clear_chunks(self, book_id: str) -> None:
         """清空 chunks 文件"""
         self.save_chunks(book_id, [])
+
+    # === Characters ===
+
+    def save_characters(self, book_id: str, characters: dict[str, CharacterCard]) -> None:
+        """保存角色卡片到 JSON 文件"""
+        data = {
+            "characters": {
+                name: card.model_dump() for name, card in characters.items()
+            }
+        }
+        self._write_json(self._characters_file(book_id), data)
+
+    def load_characters(self, book_id: str) -> dict[str, CharacterCard]:
+        """从 JSON 文件加载角色卡片"""
+        try:
+            data = self.json_storage.read(self._characters_file(book_id))
+            if isinstance(data, dict):
+                characters_data = data.get("characters", {})
+            else:
+                characters_data = {}
+
+            characters = {}
+            for name, card_data in characters_data.items():
+                # 确保 character_id 存在
+                if "character_id" not in card_data:
+                    card_data["character_id"] = name
+                characters[name] = CharacterCard(**card_data)
+            return characters
+        except FileNotFoundError:
+            return {}
+
+    def get_character(self, book_id: str, character_name: str) -> Optional[CharacterCard]:
+        """获取单个角色卡片"""
+        characters = self.load_characters(book_id)
+        return characters.get(character_name)
+
+    def update_character(self, book_id: str, character: CharacterCard) -> None:
+        """更新单个角色卡片"""
+        characters = self.load_characters(book_id)
+        characters[character.name] = character
+        self.save_characters(book_id, characters)
+
+    def clear_characters(self, book_id: str) -> None:
+        """清空角色卡片文件"""
+        self.save_characters(book_id, {})
 
     def cleanup_book_data(self, book_id: str) -> None:
         """删除书籍所有相关文件"""

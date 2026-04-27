@@ -43,11 +43,11 @@ key_events: list[str] # Node IDs of significant moments
 1. Load existing characters from `BookRepository.load_characters(book_id)`
 2. For each node in the chunk:
    a. Identify characters present in `node.characters`
-   b. For new characters: create CharacterCard with first_seen info
+   b. For new characters: create CharacterCard with first\_seen info
    c. Call LLM to analyze node and extract:
-      - Emotional state changes
-      - Character interactions (with target, type, intensity)
-      - Whether this is a key event
+   - Emotional state changes
+   - Character interactions (with target, type, intensity)
+   - Whether this is a key event
 3. Update cards using CharacterCard methods:
    - `add_interaction(target, type, intensity_delta, node_id)`
    - `update_emotional_state(emotion, node_id)`
@@ -60,11 +60,13 @@ key_events: list[str] # Node IDs of significant moments
 ### Prompt Strategy
 
 The LLM receives:
-- Current node's scene, event_summary, turning_point
+
+- Current node's scene, event\_summary, turning\_point
 - List of characters in this node
 - Existing relationship context (from loaded CharacterCards)
 
 The LLM outputs JSON describing:
+
 ```json
 {
   "character_updates": [
@@ -129,7 +131,7 @@ class Agent4CharacterCard:
 
 - **LLM disabled/unavailable**: Use algorithm defaults (increment appearances only)
 - **Parse failure**: Log warning, skip that node's analysis
-- **New character**: Create card with first_seen populated
+- **New character**: Create card with first\_seen populated
 - **No LLM result**: Still increment appearances for all characters in node
 
 ## Data Flow
@@ -151,21 +153,22 @@ Chunk + Nodes → Agent4.process_nodes()
 ## Persistence
 
 Characters are accumulated across all chunks in `BookRepository`:
+
 - `load_characters(book_id)` - Load at start of each chunk
 - `save_characters(book_id, characters)` - Save after each chunk
 
 ## Comparison with Agent1-3
 
-| Agent | Input | Output | LLM Role |
-|-------|-------|--------|----------|
-| Agent1 | chunk.text | beats (nodes) | Extract narrative beats |
-| Agent2 | beats | thread markers | Assign threads |
-| Agent3 | beats | discussion_prompts | Generate prompts |
+| Agent  | Input              | Output                  | LLM Role                       |
+| ------ | ------------------ | ----------------------- | ------------------------------ |
+| Agent1 | chunk.text         | beats (nodes)           | Extract narrative beats        |
+| Agent2 | beats              | thread markers          | Assign threads                 |
+| Agent3 | beats              | discussion\_prompts     | Generate prompts               |
 | Agent4 | chunk.text + beats | updated character cards | Analyze relationships/emotions |
 
 ## Key Design Decisions
 
-1. **LLM analyzes per-node, not per-beat**: One LLM call per node in chunk (not per character), efficient
+1. **LLM analyzes per-chunk (batch)**: One LLM call processes ALL nodes in a chunk at once for efficiency
 2. **Cumulative storage**: CharacterCards persist across chunks via BookRepository
 3. **Graceful degradation**: Basic tracking works even without LLM
 4. **Relationship directionality**: A→B interaction stored in A's card, not bidirectional
@@ -175,3 +178,4 @@ Characters are accumulated across all chunks in `BookRepository`:
 
 - `src/core/agents/agent4_character_card.py` (main implementation)
 - Tests: `tests/core/test_character_tracker.py` (existing)
+

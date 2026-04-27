@@ -33,6 +33,9 @@ class NarrativeNode(BaseModel):
     #agent_intresting_finder fields
     discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
 
+    # parent chunk reference
+    parent_chunk_id: str = Field(default="", description="Parent chunk ID this node belongs to")
+
     def to_dict(self) -> dict:
         return self.model_dump()
 
@@ -54,8 +57,8 @@ class NarrativeNode(BaseModel):
         """return the content and metadata for vector store"""
         return self.scene + " " + self.event_summary + " " + self.situation+" ".join([c.name for c in self.characters]), {
             "node_id": self.id,
-            "book_id": self.book_id,
-            "position": self.beat_index
+            "position": self.beat_index,
+            "thread_id": self.thread_id,
         }
 
 class ToolResponseNode(BaseModel):

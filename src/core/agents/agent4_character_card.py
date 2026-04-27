@@ -162,7 +162,7 @@ Existing character states (for context):
 {json.dumps(existing_chars_context, ensure_ascii=False)}
 
 Current chunk text (原文，用于更准确的角色分析):
-{context.get("chunk_text", "")[:4000]}""")
+{context.get("chunk_text", "")}""")
                 ]
 
                 response = await self.llm.ainvoke(messages)
@@ -171,6 +171,8 @@ Current chunk text (原文，用于更准确的角色分析):
                 debug_log("agent4", "LLM response: {}", content[:500])
 
                 updates = self._parse_updates(content)
+                if not updates and content and content != "[]":
+                    logger.warning(f"Agent4: Failed to parse character updates from LLM output: {content[:200]}")
                 self._apply_updates(nodes, updates)
 
             except Exception as e:
@@ -193,7 +195,20 @@ Current chunk text (原文，用于更准确的角色分析):
     def _parse_updates(self, content: str) -> list[CharacterUpdateResult]:
         """解析 LLM 输出"""
         try:
-            parsed = json.loads(content)
+            # Strip markdown code blocks if present
+            cleaned = content.strip()
+            # Handle ```json ... ``` and ``` ... ``` patterns
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            elif cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            # Remove any remaining newlines after opening fence
+            cleaned = cleaned.lstrip('\n')
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+
+            parsed = json.loads(cleaned)
             if isinstance(parsed, list):
                 return [CharacterUpdateResult(**item) for item in parsed if item.get("character")]
         except (json.JSONDecodeError, Exception):

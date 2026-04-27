@@ -46,7 +46,7 @@ class NarrativeNodeGenerator:
         self.model_name = model
         self.pipeline_config = PipelineConfig.from_env()
 
-        # Initialize agents
+        # Initialize agents with book_id
         self.agent1 = Agent1Extractor(book_id=book_id, api_key=api_key, model=model)
         self.agent2 = Agent2ThreadMarker(api_key=api_key, book_id=book_id)
         self.agent3 = Agent3InterestingFinder(api_key=api_key, book_id=book_id)
@@ -150,12 +150,9 @@ class NarrativeNodeGenerator:
                 thread_name=validated.get('thread_name', ''),
                 thread_prev_node_id=validated.get('thread_prev_node_id', ''),
                 thread_next_node_id=validated.get('thread_next_node_id', ''),
-                discussion_prompts=validated.get('discussion_prompts', [])
+                discussion_prompts=validated.get('discussion_prompts', []),
+                parent_chunk_id=chunk.id
             )
-            
-            # Add parent_chunk_id as an attribute if needed
-            if hasattr(node, 'parent_chunk_id'):
-                node.parent_chunk_id = chunk.id
             nodes.append(node)
 
         debug("node_generator", "[Chunk {}] Generated {} nodes", chunk.id, len(nodes))

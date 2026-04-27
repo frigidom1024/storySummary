@@ -98,18 +98,18 @@ class NovelToPodcastPipeline:
 
         # Store original text chunks
         if chunks:
-            for chunk in chunks:
-                if hasattr(chunk, 'content') and chunk.content:
-                    chapter_id = chunk.chapter or f"chapter_{chunks.index(chunk)}"
-                    chunk_id = chunk.id if hasattr(chunk, 'id') and chunk.id else f"chunk_{chunks.index(chunk)}"
+            for i, chunk in enumerate(chunks):
+                chunk_id = chunk.id
+                if hasattr(chunk, 'text') and chunk.text:
+                    chapter_id = chunk.chapter or f"chapter_{i}"
                     self.vector_store.add_original_text(
                         book_id=book_id,
-                        text=chunk.content,
+                        text=chunk.text,
                         chapter_id=chapter_id,
                         chunk_id=chunk_id
                     )
                 else:
-                    logger.warning(f"[{title}] Chunk {chunk_id} has no content, skipping.")
+                    logger.warning(f"[{title}] Chunk {chunk_id} has no text, skipping.")
             logger.info(f"[{title}] Stored {len(chunks)} original text chunks")
 
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
@@ -123,6 +123,9 @@ class NovelToPodcastPipeline:
 
             # Pass book_id to node_generator for tool queries
             self.node_generator.book_id = book_id
+            self.node_generator.agent2.book_id = book_id
+            self.node_generator.agent3.book_id = book_id
+            self.node_generator.agent4.book_id = book_id
 
             nodes = await self.node_generator.generate_from_chunk(chunk)
             if not isinstance(nodes, list):
@@ -144,6 +147,12 @@ class NovelToPodcastPipeline:
             if nodes:
                 self.vector_store.add_nodes(book_id, nodes)
                 logger.info(f"[{title}] Stored {len(nodes)} narrative nodes from chunk {i+1}")
+
+            # Save to BookRepository for persistence (append each node)
+            if nodes:
+                for node in nodes:
+                    book_repository.append_node(book_id, node)
+                book_repository.save_chunks(book_id, chunks[:i+1])
 
 
         # Build structure 
