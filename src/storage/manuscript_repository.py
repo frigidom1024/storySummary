@@ -53,6 +53,19 @@ class ManuscriptRepository:
                 os.remove(temp_path)
             raise
 
+    # === Outline ===
+
+    def save_outline(self, book_id: str, outline: dict) -> None:
+        """保存口播稿大纲（结构化 JSON）"""
+        self._write_json(self._outline_file(book_id), outline)
+
+    def load_outline(self, book_id: str) -> dict | None:
+        """加载口播稿大纲"""
+        file_path = self._outline_file(book_id)
+        if not file_path.exists():
+            return None
+        return self.json_storage.read(str(file_path))
+
     # === Synopsis ===
 
     def save_synopsis(self, book_id: str, synopsis: str) -> None:
