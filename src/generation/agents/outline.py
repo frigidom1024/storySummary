@@ -34,27 +34,58 @@ class OutlineAgent:
 
         has_reference = "有" if reference_script else "无"
         emit(f"[outline] 阶段1 开始（参考口播稿：{has_reference}）...")
+        nodes_by_chunk: dict[str, list[NarrativeNode]] = {}
+        for node in nodes:
+            nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
         chapter_summaries = await self.batch_summarize_chapters(
-            chunks, nodes, progress_callback=progress_callback
+            chunks, nodes_by_chunk, progress_callback=progress_callback
         )
         emit("[outline] 阶段1 完成；阶段2：生成结构化 JSON...")
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id, chunks=chunks, nodes=nodes)
 
-        system_prompt = """你是资深故事编辑，负责先产出全书级故事大纲，供后续章节写作 agent 使用。
+        # 如果有参考口播稿，提取风格描述用于调整 tone
+        reference_style = ""
+        if reference_script:
+            reference_style = f"\n\n## 参考口播稿风格\n请学习以下口播稿的风格特点，并在 metadata.tone 中体现：\n{reference_script[:2000]}..."  # 限制长度
 
-要求：
-- 你接收的是"逐章摘要初稿"，需要做全书级统筹优化。
-- 必须忠于原始章节与叙事节点，不补写不存在的剧情。
-- 输出应覆盖整体发展脉络，而不是零散章节摘要拼接。
-- 明确标记关键位置：伏笔、回收点、时间锚点、关系转折、冲突升级点、高潮、收束。
-- 需要能帮助"按章节增量写作"的 agent 在任意章节保持全局一致理解。
-- 如果你需要获取原文信息来确认具体内容，请调用 lookup_original_text 和 vector_retrieve 工具。"""
+        system_prompt = f"""你是资深故事编辑，负责生成结构化口播稿大纲。
 
-        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出结构化全书 outline。
+## 你的任务
+1. 根据章节摘要提炼全书故事梗概（story_synopsis）
+2. 规划口播稿结构（manuscript_outline）
+
+## 输出格式
+必须输出有效的 JSON 字符串，格式如下：
+{{
+  "story_synopsis": "全文故事情节摘要，包含核心人物、核心冲突、关键转折、结局",
+  "manuscript_outline": [
+    {{"section": "开篇介绍", "type": "author_intro", "description": "..."}},
+    {{"section": "第X章", "type": "story_content", "chapter": X, "description": "..."}},
+    {{"section": "思考与总结", "type": "reflection", "description": "..."}}
+  ],
+  "metadata": {{
+    "total_sections": 15,
+    "estimated_duration": "约2小时",
+    "tone": "口语化、亲切、故事感"
+  }}
+}}
+
+## Section Type 分类
+- author_intro: 作者/书籍介绍
+- story_content: 故事情节内容（必须包含 chapter 编号）
+- reflection: 思考、总结、感悟
+
+## 要求
+- 必须忠于原始章节与叙事节点，不补写不存在的剧情
+- manuscript_outline 必须覆盖所有章节
+- 如果有参考口播稿，学习其风格并调整 metadata.tone{reference_style}"""
+
+        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出结构化 JSON 大纲。
 
 逐章摘要初稿如下：
 {chapter_summaries}
-"""
+
+请直接输出 JSON，不要包含任何其他内容。"""
 
         if self.debug_mode:
             debug("outline", "[OUTLINE] chapters={} nodes={}", len(chunks), len(nodes))
@@ -79,6 +110,14 @@ class OutlineAgent:
         output = self._extract_output(response)
         if not output:
             raise ValueError("OutlineAgent returned empty response")
+
+        # 验证 JSON 可解析
+        import json
+        try:
+            result = json.loads(output)
+        except json.JSONDecodeError:
+            raise ValueError("OutlineAgent did not return valid JSON: " + output[:200])
+
         emit("[outline] 阶段2 完成")
         return output
 
@@ -99,64 +138,69 @@ class OutlineAgent:
         char_s = "、".join(names) if names else "（无）"
         return f"- 场景：{scene_s}；事件：{event_s}；人物：{char_s}"
 
-    async def _build_chapter_summaries(
+    async def batch_summarize_chapters(
         self,
         chunks: list[Chunk],
-        nodes: list[NarrativeNode],
+        nodes_by_chunk: dict[str, list[NarrativeNode]],
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
-        """阶段1：逐章摘要，产出章节初稿卡片。"""
+        """阶段1：批量摘要，每批5章。"""
 
         def emit(msg: str) -> None:
             if progress_callback:
                 progress_callback(msg)
 
-        nodes_by_chunk: dict[str, list[NarrativeNode]] = {}
-        for node in nodes:
-            nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
-
         total = len(chunks)
-        emit(f"[outline] 阶段1 逐章摘要：共 {total} 章，节点 {len(nodes)} 个")
+        emit(f"[outline] 阶段1 批量摘要：共 {total} 章，节点 {sum(len(v) for v in nodes_by_chunk.values())} 个")
 
+        # 按5章一批分组
+        batch_size = 5
         summaries: list[str] = []
-        for idx, chunk in enumerate(chunks, start=1):
-            chapter_name = chunk.chapter or f"第{idx}章"
-            emit(f"[outline] 摘要 {idx}/{total}：{chapter_name}（请求 LLM）…")
-            chapter_nodes = nodes_by_chunk.get(chunk.id, [])
-            node_lines: list[str] = []
-            for n in chapter_nodes:
-                line = self._format_node_for_summary(n)
-                if line:
-                    node_lines.append(line)
-            node_text = "\n".join(node_lines) if node_lines else "- （无节点）"
-            chunk_preview = chunk.text.replace("\n", " ")
+
+        for batch_start in range(0, total, batch_size):
+            batch_end = min(batch_start + batch_size, total)
+            batch_chunks = chunks[batch_start:batch_end]
+            n = len(batch_chunks)
+
+            emit(f"[outline] 批量摘要 {batch_start + 1}-{batch_end}/{total}（请求 LLM）…")
+
+            # 构建批量prompt
+            chapter_blocks: list[str] = []
+            for chunk in batch_chunks:
+                chapter_name = chunk.chapter or f"第{batch_chunks.index(chunk) + batch_start + 1}章"
+                chapter_nodes = nodes_by_chunk.get(chunk.id, [])
+                node_lines: list[str] = []
+                for n_node in chapter_nodes:
+                    line = self._format_node_for_summary(n_node)
+                    if line:
+                        node_lines.append(line)
+                node_text = "\n".join(node_lines) if node_lines else "- （无节点）"
+                chapter_blocks.append(f"""## {chapter_name}
+节点线索：
+{node_text}
+原文内容：
+{chunk.text}""")
 
             system_prompt = """你是章节摘要助手。只总结当前章节，不跨章推理。
 - 忠于原文，不补写剧情。
-- 输出紧凑，突出事件推进、关系变化、伏笔信号和章节亮点。"""
-            user_prompt = f"""请为当前章节输出摘要卡片，使用以下结构：
-1) 章节一段话概述
-2) 关键事件
+- 输出紧凑，突出事件推进、关系变化、伏笔信号和章节亮点。
+- 每个章节输出格式：## 第X章: xxx\\n[摘要内容]"""
+            user_prompt = f"请为以下 {n} 章生成摘要，输出 {n} 个独立章节摘要块：\n\n" + "\n\n".join(chapter_blocks)
 
-
-章节：{chapter_name}
-节点线索：
-{node_text}
-
-原文：
-{chunk_preview}
-"""
             response = await self.llm.ainvoke(
                 [
                     SystemMessage(content=system_prompt),
                     HumanMessage(content=user_prompt),
                 ]
             )
-            chapter_summary = (response.content or "").strip()
-            if not chapter_summary:
-                chapter_summary = f"{chapter_name}\n- 摘要生成失败"
-            summaries.append(f"## {chapter_name}\n{chapter_summary}")
-            emit(f"[outline] 摘要 {idx}/{total}：{chapter_name} 完成")
+            batch_summary = (response.content or "").strip()
+            if not batch_summary:
+                batch_summary = "\n\n".join(
+                    f"## {chunk.chapter or f'第{batch_chunks.index(chunk) + batch_start + 1}章'}\n- 摘要生成失败"
+                    for chunk in batch_chunks
+                )
+            summaries.append(batch_summary)
+            emit(f"[outline] 批量摘要 {batch_start + 1}-{batch_end}/{total} 完成")
 
         return "\n\n".join(summaries)
 
