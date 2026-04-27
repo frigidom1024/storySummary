@@ -2,11 +2,11 @@
 
 from .models import ChapterDraft, ManuscriptResult
 from .state import WritingPhase, WritingState
-from .outline_agent import OutlineAgent
+from .agents.outline import OutlineAgent
 from .research_tools import ManuscriptResearchToolkit
-from .style_agent import StyleLearningAgent
-from .writer import ChapterWriter
-from .polish import PolishAgent
+from .agents.style import StyleLearningAgent
+from .agents.writer import ChapterWriter
+from .agents.polish import PolishAgent
 from .pipeline import ManuscriptPipeline
 
 __all__ = [
