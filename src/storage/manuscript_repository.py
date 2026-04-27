@@ -97,3 +97,21 @@ class ManuscriptRepository:
         if not file_path.exists():
             return None
         return file_path.read_text(encoding="utf-8")
+
+    # === 工具方法 ===
+
+    def delete_manuscript(self, book_id: str) -> None:
+        """删除口播稿相关所有文件"""
+        files = [
+            self._synopsis_file(book_id),
+            self._outline_file(book_id),
+            self._drafts_file(book_id),
+            self._final_manuscript_file(book_id),
+        ]
+        for file_path in files:
+            if file_path.exists():
+                file_path.unlink()
+
+    def manuscript_exists(self, book_id: str) -> bool:
+        """检查口播稿是否已生成（至少存在大纲文件）"""
+        return self._outline_file(book_id).exists()
