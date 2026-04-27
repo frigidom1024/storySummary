@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from src.generation.models import ManuscriptResult
-from src.generation.outline_agent import OutlineAgent
-from src.generation.polish import PolishAgent
+from src.generation.agents.outline import OutlineAgent
+from src.generation.agents.polish import PolishAgent
 from src.generation.state import WritingPhase, WritingState
-from src.generation.style_agent import StyleLearningAgent
-from src.generation.writer import ChapterWriter
+from src.generation.agents.style import StyleLearningAgent
+from src.generation.agents.writer import ChapterWriter
 from src.logging_config import debug
 from src.storage.book_repository import book_repository
 from src.storage.database import Database
@@ -55,12 +55,6 @@ class ManuscriptPipeline:
             book_title=book.title,
         )
 
-        await self._report_progress(5, "正在构建全书故事大纲...")
-        outline = await self._load_or_build_outline(book_id, book.title, chunks, nodes)
-        style_profile = await self._load_or_build_style_profile(book.title, self.reference_script)
-        total = len(chunks)
-        debug("pipeline", "[RUN] title={} chunks={}", book.title, total)
-
         while state.current_chunk_index < total:
             idx = state.current_chunk_index
             chunk = chunks[idx]
@@ -72,11 +66,7 @@ class ManuscriptPipeline:
                 chunk=chunk,
                 nodes=chunk_nodes,
                 completed_drafts=state.drafts,
-                global_outline=outline,
                 book_id=book_id,
-                all_chunks=chunks,
-                all_nodes=nodes,
-                style_profile=style_profile,
                 style_key=self.style_key,
                 custom_rules=self.custom_rules,
                 reference_script=self.reference_script,
