@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from src.generation.models import ManuscriptResult
-from src.generation.outline_agent import OutlineAgent
+from src.generation.agents.outline import OutlineAgent
 from src.generation.polish import PolishAgent
 from src.generation.state import WritingPhase, WritingState
-from src.generation.style_agent import StyleLearningAgent
+from src.generation.agents.style import StyleLearningAgent
 from src.generation.writer import ChapterWriter
 from src.logging_config import debug
 from src.storage.book_repository import book_repository
