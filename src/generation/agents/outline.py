@@ -26,15 +26,18 @@ class OutlineAgent:
         chunks: list[Chunk],
         nodes: list[NarrativeNode],
         progress_callback: Callable[[str], None] | None = None,
-    ) -> str:
+        reference_script: str | None = None,
+    ) -> str:  # 返回 JSON 字符串
         def emit(msg: str) -> None:
             if progress_callback:
                 progress_callback(msg)
 
-        chapter_summaries = await self._build_chapter_summaries(
+        has_reference = "有" if reference_script else "无"
+        emit(f"[outline] 阶段1 开始（参考口播稿：{has_reference}）...")
+        chapter_summaries = await self.batch_summarize_chapters(
             chunks, nodes, progress_callback=progress_callback
         )
-        emit("[outline] 阶段1 完成；阶段2：全书 outline 优化（Agent + 工具，可能较久）…")
+        emit("[outline] 阶段1 完成；阶段2：生成结构化 JSON...")
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id, chunks=chunks, nodes=nodes)
 
         system_prompt = """你是资深故事编辑，负责先产出全书级故事大纲，供后续章节写作 agent 使用。
