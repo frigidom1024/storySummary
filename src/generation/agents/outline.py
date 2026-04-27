@@ -1,11 +1,10 @@
+import json
 import os
 from collections.abc import Callable
 
-from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.core.node_generator import create_llm
-from src.generation.research_tools import ManuscriptResearchToolkit
 from src.logging_config import debug
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
@@ -35,48 +34,67 @@ class OutlineAgent:
         chapter_summaries = await self.batch_summarize_chapters(
             chunks, nodes, progress_callback=progress_callback
         )
-        emit("[outline] 阶段1 完成；阶段2：全书 outline 优化（Agent + 工具，可能较久）…")
-        tools = ManuscriptResearchToolkit.create_tools(book_id=book_id, chunks=chunks, nodes=nodes)
+        emit("[outline] 阶段1 完成；阶段2：全书 outline 优化（直接 LLM JSON 输出）…")
 
-        system_prompt = """你是资深故事编辑，负责先产出全书级故事大纲，供后续章节写作 agent 使用。
+        system_prompt = """你是资深故事编辑，负责生成结构化口播稿大纲。
 
-要求：
-- 你接收的是"逐章摘要初稿"，需要做全书级统筹优化。
-- 必须忠于原始章节与叙事节点，不补写不存在的剧情。
-- 输出应覆盖整体发展脉络，而不是零散章节摘要拼接。
-- 明确标记关键位置：伏笔、回收点、时间锚点、关系转折、冲突升级点、高潮、收束。
-- 需要能帮助"按章节增量写作"的 agent 在任意章节保持全局一致理解。
-- 如果你需要获取原文信息来确认具体内容，请调用 lookup_original_text 和 vector_retrieve 工具。"""
+## 你的任务
+1. 根据章节摘要提炼全书故事梗概（story_synopsis）
+2. 规划口播稿结构（manuscript_outline）
 
-        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出结构化全书 outline。
+## 输出格式
+必须输出有效的 JSON 字符串，格式如下：
+{
+  "story_synopsis": "全文故事情节摘要，包含核心人物、核心冲突、关键转折、结局",
+  "manuscript_outline": [
+    {"section": "开篇介绍", "type": "author_intro", "description": "..."},
+    {"section": "第X章", "type": "story_content", "chapter": X, "description": "..."},
+    {"section": "思考与总结", "type": "reflection", "description": "..."}
+  ],
+  "metadata": {
+    "total_sections": 15,
+    "estimated_duration": "约2小时",
+    "tone": "口语化、亲切、故事感"
+  }
+}
+
+## Section Type 分类
+- author_intro: 作者/书籍介绍
+- story_content: 故事情节内容（必须包含 chapter 编号）
+- reflection: 思考、总结、感悟
+
+## 要求
+- 必须忠于原始章节与叙事节点，不补写不存在的剧情
+- manuscript_outline 必须覆盖所有章节
+- 如果有参考口播稿，学习其风格并调整 metadata.tone
+- 直接输出 JSON，不要包含任何其他内容"""
+
+        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出结构化 JSON 大纲。
 
 逐章摘要初稿如下：
 {chapter_summaries}
-"""
+
+请直接输出 JSON，不要包含任何其他内容。"""
 
         if self.debug_mode:
             debug("outline", "[OUTLINE] chapters={} nodes={}", len(chunks), len(nodes))
 
-        agent = create_agent(
-            model=self.llm,
-            tools=tools,
-            system_prompt=system_prompt,
-            debug=self.debug_mode,
-            name="outline-optimizer-agent",
-        )
-        response = await agent.ainvoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ]
-            }
+        response = await self.llm.ainvoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
         )
         output = self._extract_output(response)
         if not output:
             raise ValueError("OutlineAgent returned empty response")
+
+        # 尝试解析为 JSON
+        try:
+            json.loads(output)
+        except json.JSONDecodeError:
+            raise ValueError("OutlineAgent did not return valid JSON")
+
         emit("[outline] 阶段2 完成")
         return output
 
