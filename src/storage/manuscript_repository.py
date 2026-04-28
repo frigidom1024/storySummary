@@ -142,3 +142,6 @@ class ManuscriptRepository:
     def manuscript_exists(self, book_id: str) -> bool:
         """检查口播稿是否已生成（至少存在大纲文件）"""
         return self._outline_file(book_id).exists()
+
+
+manuscript_repository = ManuscriptRepository()

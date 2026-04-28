@@ -108,17 +108,18 @@ class NovelToPodcastPipeline:
                         chapter_id=chapter_id,
                         chunk_id=chunk_id
                     )
+                    book_repository.append_chunk(book_id, chunk)
                 else:
                     logger.warning(f"[{title}] Chunk {chunk_id} has no text, skipping.")
             logger.info(f"[{title}] Stored {len(chunks)} original text chunks")
+
+        
 
         # 2. Generate MULTIPLE narrative nodes per chunk (multi-beat)
         all_nodes = []
         total_beats = 0
 
         # For testing, limit to first N chunks to avoid long processing time
-        max_chunk = 5
-        chunks = chunks[:max_chunk]  # Limit to first N chunks for testing
         
         for i, chunk in enumerate(chunks):
             logger.debug(f"[{title}] Processing chunk {i+1}/{len(chunks)}: {chunk.chapter or 'No chapter'}")

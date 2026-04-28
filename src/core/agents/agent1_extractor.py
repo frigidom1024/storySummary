@@ -175,7 +175,7 @@ IMPORTANT: Use EXACT character names from the known characters list above. Do NO
 Output ONLY the JSON array in your response, no explanation."""
 
             response = await self.llm.ainvoke([
-                SystemMessage(content=system_prompt),
+                SystemMessage(content=self.SYSTEM_PROMPT),
                 HumanMessage(content=user_message)
             ])
 
