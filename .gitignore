@@ -77,5 +77,6 @@ chromadb/
 Thumbs.db
 
 #data
-data/.worktrees/
+data/
 .worktrees/
+

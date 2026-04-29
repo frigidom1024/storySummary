@@ -11,7 +11,13 @@ from src.models.narrative_node import NarrativeNode
 
 
 class OutlineAgent:
-    """负责生成全书级 outline（含伏笔与锚点）。"""
+    """负责生成全书级 outline（含伏笔与锚点）。
+
+    流程：
+    1. 阶段1：批量章节摘要（每批5章）
+    2. 阶段2a：基于章节摘要构建故事梗概（自然语言）
+    2. 阶段2b：基于章节摘要构建口播稿Outline
+    """
 
     def __init__(self, api_key: str = None, model: str = None, debug_mode: bool = False):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
@@ -26,7 +32,8 @@ class OutlineAgent:
         nodes: list[NarrativeNode],
         progress_callback: Callable[[str], None] | None = None,
         reference_script: str | None = None,
-    ) -> str:  # 返回 JSON 字符串
+    ) -> tuple[str, str]:
+        """返回 (story_synopsis, manuscript_outline_json) 元组，调用者按需取用。"""
         def emit(msg: str) -> None:
             if progress_callback:
                 progress_callback(msg)
@@ -36,10 +43,86 @@ class OutlineAgent:
         nodes_by_chunk: dict[str, list[NarrativeNode]] = {}
         for node in nodes:
             nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
+
+        # 阶段1：批量章节摘要
         chapter_summaries = await self.batch_summarize_chapters(
             chunks, nodes_by_chunk, progress_callback=progress_callback
         )
-        emit("[outline] 阶段1 完成；阶段2：生成结构化 JSON...")
+        emit("[outline] 阶段1 完成")
+
+        # 阶段2a：构建故事梗概
+        emit("[outline] 阶段2a：构建故事梗概...")
+        story_synopsis = await self.build_story_synopsis(
+            chapter_summaries, progress_callback=progress_callback
+        )
+        emit("[outline] 阶段2a 完成")
+
+        # 阶段2b：构建口播稿Outline
+        emit("[outline] 阶段2b：构建口播稿Outline...")
+        manuscript_outline = await self.build_manuscript_outline(
+            chapter_summaries, chunks, reference_script, progress_callback=progress_callback
+        )
+        emit("[outline] 阶段2b 完成")
+
+        # 返回元组，调用者按需取用
+        manuscript_outline_json = json.dumps(manuscript_outline, ensure_ascii=False)
+        return story_synopsis, manuscript_outline_json
+
+    async def build_story_synopsis(
+        self,
+        chapter_summaries: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> str:
+        """阶段2a：基于章节摘要用自然语言写完整故事梗概。"""
+
+        def emit(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+
+        system_prompt = """你是资深故事编辑，擅长用流畅的自然语言讲述完整故事。
+
+## 你的任务
+基于章节摘要，用连贯的自然语言写一段完整的故事梗概。
+
+## 要求
+1. 故事梗概应该像讲故事一样娓娓道来，不是干巴巴的要点罗列
+2. 必须涵盖：核心人物身份、核心冲突、关键情节点、结局
+3. 使用"很久以前""有一天""最终"等叙事连接词让故事流畅
+4. 突出故事的转折点和戏剧性时刻
+5. 严格忠于原始章节摘要，不补写不存在的剧情
+6. 长度适中（300-600字），足够清晰又不过于细节
+7. 直接输出故事梗概正文，不要包含任何标记或说明"""
+
+        user_prompt = f"""请基于以下章节摘要，用自然语言写一段完整的故事梗概：
+
+{chapter_summaries}
+
+请直接输出故事梗概正文，不要包含任何其他内容。"""
+
+        response = await self.llm.ainvoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+        output = self._extract_output(response)
+        if not output:
+            raise ValueError("build_story_synopsis returned empty response")
+        emit(f"[outline] 故事梗概生成完成（{len(output)}字）")
+        return output
+
+    async def build_manuscript_outline(
+        self,
+        chapter_summaries: str,
+        chunks: list[Chunk],
+        reference_script: str | None,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> list[dict]:
+        """阶段2b：构建口播稿Outline结构。"""
+
+        def emit(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
 
         # 如果有参考口播稿，提取风格描述用于调整 tone
         reference_style = ""
@@ -49,21 +132,17 @@ class OutlineAgent:
         system_prompt = f"""你是资深故事编辑，负责生成结构化口播稿大纲。
 
 ## 你的任务
-1. 根据章节摘要提炼全书故事梗概（story_synopsis）
-2. 规划口播稿结构（manuscript_outline）
+根据章节摘要，规划口播稿结构（manuscript_outline）。
 
 ## 输出格式
 必须输出有效的 JSON 字符串，格式如下：
 {{
-  "story_synopsis": "全文故事情节摘要，包含核心人物、核心冲突、关键转折、结局",
   "manuscript_outline": [
     {{"section": "开篇介绍", "type": "author_intro", "description": "..."}},
     {{"section": "第X章", "type": "story_content", "chapter": X, "description": "..."}},
     {{"section": "思考与总结", "type": "reflection", "description": "..."}}
   ],
   "metadata": {{
-    "total_sections": 15,
-    "estimated_duration": "约2小时",
     "tone": "口语化、亲切、故事感"
   }}
 }}
@@ -79,15 +158,12 @@ class OutlineAgent:
 - 如果有参考口播稿，学习其风格并调整 metadata.tone{reference_style}
 - 直接输出 JSON，不要包含任何其他内容"""
 
-        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出结构化 JSON 大纲。
+        user_prompt = f"""你将拿到逐章摘要初稿。请先审查并纠偏，再输出口播稿结构 JSON。
 
 逐章摘要初稿如下：
 {chapter_summaries}
 
 请直接输出 JSON，不要包含任何其他内容。"""
-
-        if self.debug_mode:
-            debug("outline", "[OUTLINE] chapters={} nodes={}", len(chunks), len(nodes))
 
         response = await self.llm.ainvoke(
             [
@@ -97,16 +173,18 @@ class OutlineAgent:
         )
         output = self._extract_output(response)
         if not output:
-            raise ValueError("OutlineAgent returned empty response")
+            raise ValueError("build_manuscript_outline returned empty response")
 
         # 验证 JSON 可解析
+        import json
         try:
-            json.loads(output)
+            parsed = json.loads(output)
+            manuscript_outline = parsed.get("manuscript_outline", [])
         except json.JSONDecodeError:
-            raise ValueError("OutlineAgent did not return valid JSON: " + output[:200])
+            raise ValueError("build_manuscript_outline did not return valid JSON: " + output[:200])
 
-        emit("[outline] 阶段2 完成")
-        return output
+        emit(f"[outline] 口播稿Outline生成完成（{len(manuscript_outline)}个节点）")
+        return manuscript_outline
 
     @staticmethod
     def _format_node_for_summary(n: NarrativeNode) -> str:
@@ -192,9 +270,26 @@ class OutlineAgent:
 
         return "\n\n".join(summaries)
 
-    def _extract_output(self, response: dict) -> str:
+    def _extract_output(self, response) -> str:
+        # 支持 dict 格式（兼容旧代码）和 AIMessage 对象
+        if hasattr(response, "content"):
+            # AIMessage 或类似对象
+            content = response.content
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                return "".join(
+                    item.get("text", "") if isinstance(item, dict) else str(item)
+                    for item in content
+                ).strip()
+            return str(content).strip()
+        # dict 格式兼容
         messages = response.get("messages", []) if isinstance(response, dict) else []
         if not messages:
+            # 调试信息
+            debug("outline", "[OUTLINE] _extract_output: no messages, response type={}", type(response))
+            if self.debug_mode and hasattr(response, "content"):
+                debug("outline", "[OUTLINE] response.content={}", getattr(response, "content", None))
             return ""
         last = messages[-1]
         content = getattr(last, "content", "")
