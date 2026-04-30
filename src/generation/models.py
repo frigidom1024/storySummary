@@ -12,7 +12,15 @@ class ManuscriptResult(BaseModel):
     phase: str
     chapters_written: int
     total_chunks: int
+    intro: str = ""
+    reflection: str = ""
 
     @property
     def full_manuscript(self) -> str:
-        return "\n\n---\n\n".join(d.chapter_text for d in self.drafts)
+        parts = []
+        if self.intro:
+            parts.append(self.intro)
+        parts.extend(d.chapter_text for d in self.drafts)
+        if self.reflection:
+            parts.append(self.reflection)
+        return "\n\n---\n\n".join(parts)

@@ -30,8 +30,8 @@ class NarrativeNode(BaseModel):
     thread_prev_node_id: str = Field(default="", description="Previous node ID in same thread")
     thread_next_node_id: str = Field(default="", description="Next node ID in same thread (optional)")
 
-    #agent_intresting_finder fields
-    discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
+    # deprecated: moved to Chunk level, kept for backward compatibility
+    discussion_prompts: list[str] = Field(default_factory=list, description="[DEPRECATED] Discussion anchors - moved to Chunk.discussion_prompts")
 
     # parent chunk reference
     parent_chunk_id: str = Field(default="", description="Parent chunk ID this node belongs to")

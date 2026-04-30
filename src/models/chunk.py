@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
@@ -8,6 +8,9 @@ class Chunk(BaseModel):
     chapter: Optional[str] = None
     order: int = 0
     content_type: Optional[str] = None  # story_content / appendix / author_intro / other
+
+    # agent3_interesting_finder.py 中负责维护的扩展字段
+    discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
 
     def to_dict(self) -> dict:
         """序列化为字典"""

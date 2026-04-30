@@ -86,9 +86,13 @@ class NovelToPodcastPipeline:
 
         # 使用 reader 已经分好的章节作为 chunks
         # 调用 AI 分类并过滤非故事内容
-        await reader.classify_chapters_ai()
-        story_chunks = [ch for ch in reader.chapters if ch.content_type == "story_content"]
-        logger.info(f"[{reader.title}] AI classification: {len(story_chunks)}/{len(reader.chapters)} story chapters")
+        from src.utils.reader import classify_content_types
+        chunks = await classify_content_types(reader.chapters, llm=None)
+
+        # 保留所有章节，但标记 content_type，后续写作 agent 可选择性使用
+        book_repository.save_chunks(book_id, chunks)
+        story_chunks = [ch for ch in chunks if ch.content_type == "story_content"]
+        logger.info(f"[{reader.title}] AI classification: {len(story_chunks)}/{len(chunks)} story chapters")
 
         return await self.process(story_chunks, reader.title, book_id=book_id)
 
@@ -112,7 +116,6 @@ class NovelToPodcastPipeline:
                         chapter_id=chapter_id,
                         chunk_id=chunk_id
                     )
-                    book_repository.append_chunk(book_id, chunk)
                 else:
                     logger.warning(f"[{title}] Chunk {chunk_id} has no text, skipping.")
             logger.info(f"[{title}] Stored {len(chunks)} original text chunks")
@@ -134,7 +137,6 @@ class NovelToPodcastPipeline:
             # Pass book_id to node_generator for tool queries
             self.node_generator.book_id = book_id
             self.node_generator.agent2.book_id = book_id
-            self.node_generator.agent3.book_id = book_id
             self.node_generator.agent4.book_id = book_id
 
             nodes = await self.node_generator.generate_from_chunk(chunk)
@@ -157,6 +159,20 @@ class NovelToPodcastPipeline:
                 for node in nodes:
                     book_repository.append_node(book_id, node)
 
+        # Agent3: 丰富 chunk 的 discussion_prompts
+        # 在节点生成完成后调用，独立于 node 生成流程
+        from src.core.agents.agent3_interesting_finder import Agent3InterestingFinder
+        agent3 = Agent3InterestingFinder(api_key=self.api_key, book_id=book_id)
+        logger.info(f"[{title}] Agent3: Processing discussion prompts for {len(chunks)} chunks...")
+        for i, chunk in enumerate(chunks):
+            logger.debug(f"[{title}] Agent3: Processing chunk {i+1}/{len(chunks)}: {chunk.chapter or 'untitled'}")
+            updated_chunk = await agent3.process_chunk(chunk)
+            chunks[i] = updated_chunk
+        logger.info(f"[{title}] Agent3: discussion prompts enriched")
+
+        # 保存更新后的 chunks
+        book_repository.update_chunks(book_id, chunks)
+        logger.info(f"[{title}] Updated {len(chunks)} chunks with discussion_prompts")
 
         # Build structure
         if all_nodes:

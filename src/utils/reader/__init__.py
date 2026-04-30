@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, List
+import re
 import json
 import logging
 from langchain_core.language_models import BaseChatModel
@@ -48,10 +49,10 @@ async def classify_content_types(
     system_prompt = """You are a content classifier. Given a list of book chapters with their titles and opening text, classify each chapter's content type.
 
 Classify each chapter as ONE of:
-- story_content: narrative/story text (novel chapters, main body)
+- story_content: narrative/story text (novel chapters, main body in the PRIMARY language of the book)
 - appendix: back matter (afterword, chronology, appendix, awards, Nobel speech, author biography)
 - author_intro: front matter or author introduction (preface, foreword, introduction, translator's note)
-- other: anything that doesn't fit the above
+- other: anything that doesn't fit the above (including alternate language versions, duplicate content)
 
 Output JSON array only:
 [{"index": 1, "content_type": "story_content"}, {"index": 2, "content_type": "appendix"}, ...]
@@ -61,7 +62,10 @@ Rules:
 2. Only output one of the four types, no guessing
 3. Nobel acceptance speeches, author chronologies, appendices belong to "appendix"
 4. Author prefaces, translator prefaces belong to "author_intro"
-5. Regular book chapters (any number/part) are "story_content"""
+5. Regular book chapters (any number/part) are "story_content"
+6. If the chapter content is in a DIFFERENT LANGUAGE than the main book text (e.g., book is Chinese but chapter is French), classify as "other"
+7. If the chapter appears to be a duplicate or alternate version of another chapter, classify as "other"
+8. Only classify as "story_content" if the content is genuinely the main narrative in the book's primary language"""
 
     logger = logging.getLogger(__name__)
 

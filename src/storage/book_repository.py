@@ -149,6 +149,12 @@ class BookRepository:
         chunks.append(chunk)
         self.save_chunks(book_id, chunks)
 
+    def update_chunks(self, book_id: str, chunks: List[Chunk]) -> None:
+        """更新已有的 chunks（只更新传入的 chunks，保留其他）"""
+        existing = {c.id: c for c in self.load_chunks(book_id)}
+        existing.update({c.id: c for c in chunks})
+        self.save_chunks(book_id, list(existing.values()))
+
     # === Nodes ===
 
     def save_nodes(self, book_id: str, nodes: List[NarrativeNode]) -> None:

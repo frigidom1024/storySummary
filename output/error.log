@@ -1,0 +1,26 @@
+Traceback (most recent call last):
+  File "D:\project\storySummary\test_style.py", line 17, in test
+    profile = await agent.learn_profile(script)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\project\storySummary\src\generation\agents\style.py", line 108, in learn_profile
+    return self._parse_profile_response(response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\project\storySummary\src\generation\agents\style.py", line 140, in _parse_profile_response
+    return StyleProfile(
+           ^^^^^^^^^^^^^
+  File "D:\InstallPath\paython\Lib\site-packages\pydantic\main.py", line 212, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for StyleProfile
+structure_style
+  Input should be a valid string [type=string_type, input_value={'开场模式': '以个...升华）约占30%。'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.9/v/string_type
+narrative_style
+  Input should be a valid string [type=string_type, input_value={'句式特征': '以短...展现人物性格。'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.9/v/string_type
+intro_style
+  Input should be a valid string [type=string_type, input_value={'开场方式': '以问...离，营造共鸣。'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.9/v/string_type
+reflection_style
+  Input should be a valid string [type=string_type, input_value={'收尾模式': '以开...用”幽默收尾。'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.9/v/string_type

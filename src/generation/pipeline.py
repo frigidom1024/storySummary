@@ -7,11 +7,13 @@ from src.generation.models import ManuscriptResult
 from src.generation.agents.outline import OutlineAgent
 from src.generation.agents.polish import PolishAgent
 from src.generation.state import WritingPhase, WritingState
-from src.generation.agents.style import StyleLearningAgent
+from src.generation.agents.style import StyleLearningAgent, StyleProfile
 from src.generation.agents.writer import ChapterWriter
+from src.generation.agents.guide import GuideAgent
 from src.logging_config import debug
 from src.storage.book_repository import book_repository
 from src.storage.database import Database
+from src.storage.manuscript_repository import manuscript_repository
 
 
 class ManuscriptPipeline:
@@ -37,7 +39,10 @@ class ManuscriptPipeline:
         self.outliner = OutlineAgent(debug_mode=debug_mode)
         self.style_learner = StyleLearningAgent(debug_mode=debug_mode)
         self.writer = ChapterWriter(debug_mode=debug_mode)
+        self.guide = GuideAgent(debug_mode=debug_mode)
         self.polisher = PolishAgent(debug_mode=debug_mode)
+
+        self.style_profile: Optional[StyleProfile] = None
 
     async def run(self, book_id: str) -> ManuscriptResult:
         book = self.db.get_book(book_id)
@@ -49,14 +54,39 @@ class ManuscriptPipeline:
         if not chunks:
             raise ValueError("No chunks found for this book")
 
+        # 加载风格画像
+        style_profile = await self._load_or_build_style_profile(book.title, self.reference_script)
+
         state_path = WritingState.get_state_path(book_id, self.output_dir, book.title)
         state = WritingState.load(state_path) if state_path.exists() else WritingState(
             book_id=book_id,
             book_title=book.title,
         )
 
+        # 加载 outline（口播稿大纲结构）供 writer 参考
+        outline_data = manuscript_repository.load_outline(book_id)
+        outline_list = outline_data.get("manuscript_outline", []) if outline_data else None
+
         total = len(chunks)
         debug("pipeline", "[RUN] title={} chunks={}", book.title, total)
+
+        # 找到需要特殊处理的章节（author_intro、reflection 类型的 chunk）
+        intro_chunks = [c for c in chunks if c.content_type == "author_intro"]
+        reflection_chunks = [c for c in chunks if c.content_type in ("appendix", "reflection")]
+
+        # 1. 生成开篇介绍
+        if intro_chunks:
+            intro_chunk = intro_chunks[0]
+            debug("pipeline", "[RUN] Generating intro from chunk {}", intro_chunk.id)
+            intro_text = await self.guide.write_intro(
+                book_id=book_id,
+                chunk=intro_chunk,
+                style_key=self.style_key,
+                intro_style=style_profile.intro_style if style_profile else None,
+            )
+            if intro_text:
+                state.set_intro(intro_text)
+                debug("pipeline", "[RUN] Intro generated: {} chars", len(intro_text))
 
         while state.current_chunk_index < total:
             idx = state.current_chunk_index
@@ -73,10 +103,27 @@ class ManuscriptPipeline:
                 style_key=self.style_key,
                 custom_rules=self.custom_rules,
                 reference_script=self.reference_script,
+                outline=outline_list,
+                narrative_style=style_profile.narrative_style if style_profile else None,
             )
             state.add_draft(chunk.id, chapter_text)
             state.save(state_path)
             await self._report_progress(int((state.current_chunk_index / total) * 80), f"已完成 {chapter_name}")
+
+        # 3. 生成总结思考
+        if reflection_chunks:
+            reflection_chunk = reflection_chunks[0]
+            debug("pipeline", "[RUN] Generating reflection from chunk {}", reflection_chunk.id)
+            reflection_text = await self.guide.write_reflection(
+                book_id=book_id,
+                chunk=reflection_chunk,
+                completed_drafts=state.drafts,
+                style_key=self.style_key,
+                reflection_style=style_profile.reflection_style if style_profile else None,
+            )
+            if reflection_text:
+                state.set_reflection(reflection_text)
+                debug("pipeline", "[RUN] Reflection generated: {} chars", len(reflection_text))
 
         state.phase = WritingPhase.POLISHING
         state.save(state_path)
@@ -96,6 +143,8 @@ class ManuscriptPipeline:
             phase=state.phase.value,
             chapters_written=len(state.drafts),
             total_chunks=total,
+            intro=state.intro,
+            reflection=state.reflection,
         )
 
     async def _report_progress(self, progress: int, message: str) -> None:
@@ -130,40 +179,60 @@ class ManuscriptPipeline:
         safe = re.sub(r'[<>:"/\\|?*]', "_", title)
         return Path(self.output_dir) / safe / "outline.txt"
 
-    async def _load_or_build_style_profile(self, title: str, reference_script: Optional[str]) -> str:
+    async def _load_or_build_style_profile(self, title: str, reference_script: Optional[str]) -> StyleProfile:
+        """加载或构建分类型的风格画像"""
         if not reference_script:
-            return ""
+            return StyleProfile()
+
+        # 尝试从缓存加载
+        if self.style_profile:
+            return self.style_profile
 
         profile_path = self._style_profile_path(title)
         if profile_path.exists():
-            return profile_path.read_text(encoding="utf-8")
+            try:
+                import json
+                data = json.loads(profile_path.read_text(encoding="utf-8"))
+                self.style_profile = StyleProfile(**data)
+                return self.style_profile
+            except Exception:
+                pass
 
         try:
-            profile = await self.style_learner.learn(reference_script)
+            self.style_profile = await self.style_learner.learn_profile(reference_script)
         except Exception as exc:
             debug("pipeline", "[STYLE] fallback due to error: {}", str(exc))
-            profile = self._build_style_profile_fallback(reference_script)
+            self.style_profile = self._build_style_profile_fallback(reference_script)
 
+        # 保存为 JSON
         profile_path.parent.mkdir(parents=True, exist_ok=True)
-        profile_path.write_text(profile, encoding="utf-8")
-        return profile
+        import json
+        profile_path.write_text(json.dumps(self.style_profile.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return self.style_profile
 
     def _style_profile_path(self, title: str) -> Path:
         safe = re.sub(r'[<>:"/\\|?*]', "_", title)
-        return Path(self.output_dir) / safe / "style_profile.txt"
+        return Path(self.output_dir) / safe / "style_profile.json"
 
-    def _build_style_profile_fallback(self, reference_script: str) -> str:
+    def _build_style_profile_fallback(self, reference_script: str) -> StyleProfile:
+        """构建简单的 fallback 风格画像"""
         text = reference_script.strip().replace("\r\n", "\n")
         lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
         short_lines = [ln for ln in lines if len(ln) <= 30]
         colloquial_hits = [k for k in ["是吧", "怎么说呢", "你像", "说实话"] if k in text]
-        return (
-            "风格总览:\n"
+
+        fallback_text = (
             f"- 参考稿总长度: {len(text)} 字\n"
             f"- 行数: {len(lines)}\n"
             f"- 短句占比(<=30字): {int((len(short_lines)/max(1,len(lines)))*100)}%\n"
             f"- 常见口头表达: {', '.join(colloquial_hits) if colloquial_hits else '未显著识别'}\n"
             "- 写作建议: 保持口语化、短句推进、避免书面化总结。"
+        )
+        return StyleProfile(
+            structure_style=fallback_text,
+            narrative_style=fallback_text,
+            intro_style=fallback_text,
+            reflection_style=fallback_text,
         )
 
     def _build_outline_fallback(self, chunks: list, nodes: list) -> str:

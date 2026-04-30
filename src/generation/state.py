@@ -22,6 +22,8 @@ class WritingState(BaseModel):
     phase: WritingPhase = WritingPhase.WRITING
     current_chunk_index: int = 0
     drafts: list[ChapterDraft] = Field(default_factory=list)
+    intro: str = ""
+    reflection: str = ""
 
     @classmethod
     def get_state_path(cls, book_id: str, output_dir: str, book_title: str) -> Path:
@@ -41,5 +43,17 @@ class WritingState(BaseModel):
         self.drafts.append(ChapterDraft(chunk_id=chunk_id, chapter_text=chapter_text))
         self.current_chunk_index += 1
 
+    def set_intro(self, intro_text: str) -> None:
+        self.intro = intro_text
+
+    def set_reflection(self, reflection_text: str) -> None:
+        self.reflection = reflection_text
+
     def full_draft(self) -> str:
-        return "\n\n---\n\n".join(d.chapter_text for d in self.drafts)
+        parts = []
+        if self.intro:
+            parts.append(self.intro)
+        parts.extend(d.chapter_text for d in self.drafts)
+        if self.reflection:
+            parts.append(self.reflection)
+        return "\n\n---\n\n".join(parts)

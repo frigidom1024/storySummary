@@ -30,13 +30,21 @@ class ChapterWriter:
         style_key: Optional[str] = None,
         custom_rules: Optional[str] = None,
         reference_script: Optional[str] = None,
+        outline: Optional[list[dict]] = None,
+        narrative_style: Optional[str] = None,
     ) -> str:
         chapter_title = chunk.chapter or f"第{chunk.order + 1}章"
         nodes_text = self._format_nodes(nodes)
         last_draft = completed_drafts[-1].chapter_text if completed_drafts else "（无）"
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id)
 
-        system_prompt = build_style_system_prompt(style_key, custom_rules) + """
+        system_prompt = build_style_system_prompt(style_key, custom_rules)
+
+        # 添加从参考稿提取的叙述风格
+        if narrative_style:
+            system_prompt += f"\n\n## 原文叙述风格参考\n{narrative_style}"
+
+        system_prompt += """
 
 ## 增量写作规则
 - 你每次只写当前章节，但必须保持全书叙事一致。
@@ -45,6 +53,32 @@ class ChapterWriter:
 - 直接输出本章口播稿，不加标题，不加解释。"""
 
         user_prompt = f"""
+## 故事结构定位
+当前章节在全书的整体结构中的位置：
+"""
+        if outline:
+            # 找到当前章节在 outline 中的位置
+            current_idx = None
+            for i, section in enumerate(outline):
+                if section.get("type") == "story_content" and section.get("chapter") == chunk.order + 1:
+                    current_idx = i
+                    break
+
+            if current_idx is not None:
+                # 显示前后各2个章节的结构
+                start = max(0, current_idx - 2)
+                end = min(len(outline), current_idx + 3)
+                nearby = outline[start:end]
+
+                outline_text = "\n".join(
+                    f"- {'[当前]' if i == current_idx else ''}{s.get('section', '未知')}：{s.get('description', '')[:50]}..."
+                    for i, s in enumerate(nearby, start=start)
+                )
+                user_prompt += f"\n{nearby[0].get('section', '未知')}前后结构：\n{outline_text}\n"
+        else:
+            user_prompt += "（无大纲信息）"
+
+        user_prompt += f"""
 ## 紧邻前文章节尾部（用于衔接语气）
 ```上章
 {last_draft}
@@ -62,10 +96,10 @@ class ChapterWriter:
 {chunk.text}
 ```
 """
-
         if reference_script:
             user_prompt += f"""
 ## 参考口播稿（仅学习风格）
+以下全文仅供参考，你只需要专心写好当前章节即可，不要受全文结构影响：
 ```参考
 {reference_script}
 ```

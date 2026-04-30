@@ -1,10 +1,11 @@
 """Narrative Node Generator - 叙事节点生成器
 
-Four-agent pipeline:
+Three-agent pipeline:
 - Agent1: 叙事节点提取 (Narrative Beat Extraction)
 - Agent2: 叙事线标记 (Thread Marking)
-- Agent3: 有趣点发现 (Interesting Points Discovery)
 - Agent4: 角色卡片维护 (Character Card Management)
+
+Note: Agent3 (有趣点发现) 已从 pipeline 剥离，可外部单独调用来丰富 chunk
 """
 import logging
 from dataclasses import dataclass
@@ -12,7 +13,6 @@ from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode, CharacterStateModel
 from src.core.agents.agent1_extractor import Agent1Extractor, create_llm
 from src.core.agents.agent2_thread_marker import Agent2ThreadMarker
-from src.core.agents.agent3_interesting_finder import Agent3InterestingFinder
 from src.core.agents.agent4_character_card import Agent4CharacterCard
 from src.logging_config import debug
 
@@ -25,7 +25,6 @@ __all__ = ["create_llm"]
 @dataclass
 class PipelineConfig:
     enable_agent2: bool = True  # 叙事线标记
-    enable_agent3: bool = True  # 有趣点发现
     enable_agent4: bool = True  # 角色卡片
 
     @classmethod
@@ -33,13 +32,12 @@ class PipelineConfig:
         import os
         return cls(
             enable_agent2=os.getenv("ENABLE_AGENT2", "true").lower() == "true",
-            enable_agent3=os.getenv("ENABLE_AGENT3", "true").lower() == "true",
             enable_agent4=os.getenv("ENABLE_AGENT4", "true").lower() == "true",
         )
 
 
 class NarrativeNodeGenerator:
-    """Four-agent pipeline for generating narrative nodes from chunks."""
+    """Three-agent pipeline for generating narrative nodes from chunks."""
 
     def __init__(self, book_id: str = None, api_key: str = None, model: str = None):
         self.book_id = book_id
@@ -49,7 +47,6 @@ class NarrativeNodeGenerator:
         # Initialize agents with book_id
         self.agent1 = Agent1Extractor(book_id=book_id, api_key=api_key, model=model)
         self.agent2 = Agent2ThreadMarker(api_key=api_key, book_id=book_id)
-        self.agent3 = Agent3InterestingFinder(api_key=api_key, book_id=book_id)
         self.agent4 = Agent4CharacterCard(api_key=api_key, book_id=book_id)
         self.last_character_data: dict = {}
 
@@ -61,14 +58,12 @@ class NarrativeNodeGenerator:
         """设置搜索函数，用于 Agent2-4 查询历史节点"""
         self._search_fn = fn
         self.agent2.set_search_fn(fn)
-        self.agent3.set_search_fn(fn)
         self.agent4.set_search_fn(fn)
 
     def set_get_thread_last_fn(self, fn):
         """设置获取线程最后节点函数"""
         self._get_thread_last_fn = fn
         self.agent2.set_get_thread_last_fn(fn)
-        self.agent3.set_get_thread_last_fn(fn)
         self.agent4.set_get_thread_last_fn(fn)
 
     async def generate_from_chunk(self, chunk: Chunk) -> list[NarrativeNode]:
@@ -97,15 +92,6 @@ class NarrativeNodeGenerator:
             debug("node_generator", "Agent2: Thread marking complete")
             for i, b in enumerate(beats):
                 debug("node_generator", "  beat[{}] id={} thread_id={}", i, b.get('id'), b.get('thread_id'))
-
-        # === Agent3: 有趣点发现 ===
-        if self.pipeline_config.enable_agent3:
-            debug("node_generator", "Agent3: Finding interesting points for {} nodes", len(beats))
-            beats = await self.agent3.find(beats, context)
-            debug("node_generator", "Agent3: Interesting points found")
-            for i, b in enumerate(beats):
-                debug("node_generator", "  beat[{}] id={} discussion_prompts={}",
-                      i, b.get('id'), len(b.get('discussion_prompts', [])))
 
         # === Agent4: 角色卡片维护 ===
         if self.pipeline_config.enable_agent4:
@@ -148,7 +134,6 @@ class NarrativeNodeGenerator:
                 thread_name=validated.get('thread_name', ''),
                 thread_prev_node_id=validated.get('thread_prev_node_id', ''),
                 thread_next_node_id=validated.get('thread_next_node_id', ''),
-                discussion_prompts=validated.get('discussion_prompts', []),
                 parent_chunk_id=chunk.id
             )
             nodes.append(node)
