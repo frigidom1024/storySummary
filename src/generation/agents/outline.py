@@ -181,7 +181,6 @@ class OutlineAgent:
             raise ValueError("build_manuscript_outline returned empty response")
 
         # 验证 JSON 可解析
-        import json
         try:
             parsed = json.loads(output)
             manuscript_outline = parsed.get("manuscript_outline", [])

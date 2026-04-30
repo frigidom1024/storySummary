@@ -97,7 +97,10 @@ class ManuscriptPipeline:
 
         # ========== 阶段4：润色 ==========
         if state.phase == PipelinePhase.POLISHING or not self._is_phase_done(book_id, PipelinePhase.POLISHING):
-            await self._run_polish_phase(book_id, state, state_path)
+            try:
+                await self._run_polish_phase(book_id, state, state_path)
+            except Exception as e:
+                raise RuntimeError(f"Polish phase failed: {e}") from e
             state.phase = PipelinePhase.DONE
             state.save(state_path)
 
@@ -132,8 +135,11 @@ class ManuscriptPipeline:
         manuscript_repository.save_synopsis(book_id, story_synopsis)
 
         # 存储结构
-        outline_data = json.loads(manuscript_outline_json)
-        manuscript_repository.save_outline(book_id, outline_data)
+        try:
+            outline_data = json.loads(manuscript_outline_json)
+            manuscript_repository.save_outline(book_id, outline_data)
+        except (json.JSONDecodeError, Exception) as e:
+            raise ValueError(f"Failed to parse or save outline: {e}") from e
 
         await self._report_progress(20, "梗概和结构生成完成")
 
@@ -191,7 +197,12 @@ class ManuscriptPipeline:
                 chunk = next((c for c in chunks if c.id == chunk_id), None)
                 if chunk:
                     chunk_nodes = nodes_by_chunk.get(chunk.id, [])
-                    completed_drafts = [Draft(**d) for d in manuscript_repository.load_all_drafts(book_id).values()]
+                    completed_drafts = []
+                    for d in manuscript_repository.load_all_drafts(book_id).values():
+                        try:
+                            completed_drafts.append(Draft(**d))
+                        except Exception as e:
+                            debug("pipeline", "[_run_writing_phase] Failed to load draft: {}", e)
                     text = await self.writer.write(
                         chunk=chunk,
                         nodes=chunk_nodes,
@@ -227,12 +238,16 @@ class ManuscriptPipeline:
         """阶段4：润色"""
         await self._report_progress(85, "正在润色全文...")
 
-        all_drafts = manuscript_repository.load_all_drafts(book_id)
-        sorted_sections = sorted(all_drafts.keys())
-        full_text = "\n\n---\n\n".join(all_drafts[k]["content"] for k in sorted_sections)
+        try:
+            all_drafts = manuscript_repository.load_all_drafts(book_id)
+            sorted_sections = sorted(all_drafts.keys())
+            full_text = "\n\n---\n\n".join(all_drafts[k]["content"] for k in sorted_sections)
 
-        chunks = book_repository.load_chunks(book_id)
-        polished = await self.polisher.polish(full_text, chunks)
+            chunks = book_repository.load_chunks(book_id)
+            polished = await self.polisher.polish(full_text, chunks)
 
-        manuscript_repository.save_final_manuscript(book_id, polished)
+            manuscript_repository.save_final_manuscript(book_id, polished)
+        except Exception as e:
+            raise RuntimeError(f"Failed to polish or save manuscript: {e}") from e
+
         await self._report_progress(95, "润色完成")
