@@ -188,6 +188,14 @@ class OutlineAgent:
         except json.JSONDecodeError:
             raise ValueError("build_manuscript_outline did not return valid JSON: " + output[:200])
 
+        # 给 story_content 类型添加 chunk_id 字段
+        for chunk in chunks:
+            chapter_num = chunk.order + 1
+            for item in manuscript_outline:
+                if item.get("type") == "story_content" and item.get("chapter") == chapter_num:
+                    item["chunk_id"] = chunk.id
+                    break
+
         emit(f"[outline] 口播稿Outline生成完成（{len(manuscript_outline)}个节点）")
         return manuscript_outline
 
