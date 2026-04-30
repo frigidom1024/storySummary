@@ -166,7 +166,9 @@ class ManuscriptPipeline:
         chunks_by_type = {}
         for chunk in chunks:
             chunks_by_type.setdefault(chunk.content_type, []).append(chunk)
-        nodes_by_chunk = {n.parent_chunk_id: [n for n in nodes if n.parent_chunk_id == chunk_id] for chunk_id in [c.id for c in chunks]}
+        nodes_by_chunk = {}
+        for chunk in chunks:
+            nodes_by_chunk[chunk.id] = [n for n in nodes if n.parent_chunk_id == chunk.id]
 
         total_sections = len(outline_list)
         for i, section in enumerate(outline_list):

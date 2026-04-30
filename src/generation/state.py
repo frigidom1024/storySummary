@@ -27,7 +27,7 @@ class WritingState(BaseModel):
 
     book_id: str
     book_title: str
-    phase: WritingPhase = WritingPhase.WRITING
+    phase: PipelinePhase = PipelinePhase.WRITING
     current_chunk_index: int = 0
     drafts: list[Draft] = Field(default_factory=list)
 
