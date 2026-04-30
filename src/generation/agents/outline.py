@@ -40,13 +40,18 @@ class OutlineAgent:
 
         has_reference = "有" if reference_script else "无"
         emit(f"[outline] 阶段1 开始（参考口播稿：{has_reference}）...")
+
+        # 过滤：只保留正文类型的章节
+        story_chunks = [c for c in chunks if c.content_type == "story_content"]
+        emit(f"[outline] 过滤后正文章节：{len(story_chunks)}/{len(chunks)}")
+
         nodes_by_chunk: dict[str, list[NarrativeNode]] = {}
         for node in nodes:
             nodes_by_chunk.setdefault(node.parent_chunk_id, []).append(node)
 
         # 阶段1：批量章节摘要
         chapter_summaries = await self.batch_summarize_chapters(
-            chunks, nodes_by_chunk, progress_callback=progress_callback
+            story_chunks, nodes_by_chunk, progress_callback=progress_callback
         )
         emit("[outline] 阶段1 完成")
 
@@ -60,7 +65,7 @@ class OutlineAgent:
         # 阶段2b：构建口播稿Outline
         emit("[outline] 阶段2b：构建口播稿Outline...")
         manuscript_outline = await self.build_manuscript_outline(
-            chapter_summaries, chunks, reference_script, progress_callback=progress_callback
+            chapter_summaries, story_chunks, reference_script, progress_callback=progress_callback
         )
         emit("[outline] 阶段2b 完成")
 

@@ -1,6 +1,7 @@
 import logging
 import uuid
 from pathlib import Path
+from typing import List
 from src.core.chunker import chunk_by_book_id
 from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
@@ -83,18 +84,21 @@ class NovelToPodcastPipeline:
         dest_path = book_dir / f"book{suffix}"
         shutil.copy2(book_path, dest_path)
 
-        return await self.process(reader.read(), reader.title, book_id=book_id)
+        # 使用 reader 已经分好的章节作为 chunks
+        # 调用 AI 分类并过滤非故事内容
+        await reader.classify_chapters_ai()
+        story_chunks = [ch for ch in reader.chapters if ch.content_type == "story_content"]
+        logger.info(f"[{reader.title}] AI classification: {len(story_chunks)}/{len(reader.chapters)} story chapters")
 
-    async def process(self, novel_text: str, title: str, book_id: str = None) -> dict:
+        return await self.process(story_chunks, reader.title, book_id=book_id)
+
+    async def process(self, chunks: List[Chunk], title: str, book_id: str = None) -> dict:
         self.title = title
         book_id = book_id or self._ensure_book(title)
         logger.info(f"[{title}] Starting pipeline... (book_id={book_id})")
 
-        # 1. Chunk the novel - use AdaptiveChunker directly since we have the text
-        from src.utils.reader.text import AdaptiveChunker
-        logger.info(f"[{title}] Chunking novel...")
-        chunks = AdaptiveChunker().chunk(novel_text)
-        logger.info(f"[{title}] Generated {len(chunks)} chunks")
+        # chunks 已经是 reader 分好的章节，无需重新分块
+        logger.info(f"[{title}] Using {len(chunks)} pre-chunked chapters")
 
         # Store original text chunks
         if chunks:

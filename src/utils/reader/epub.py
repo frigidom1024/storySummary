@@ -7,9 +7,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 import re
+import json
 
 from src.utils.reader import BookReader
-
+from src.models.chunk import Chunk
 
 class EpubReader(BookReader):
     """Read EPUB files and extract text content."""
@@ -17,17 +18,31 @@ class EpubReader(BookReader):
     def __init__(self, epub_path: str):
         self.epub_path = Path(epub_path)
         self._metadata: dict = {}
-        self._chapters: list[dict] = []  # [{"title": str, "content": str, "order": int}]
+        self._chapters: list[Chunk] = []
         self._opf_dir: str = ""
+        self._text: str = ""
 
-    def read(self) -> str:
-        """Read EPUB and return full text content."""
+        # Load data immediately (except AI classification)
         self._extract_metadata()
         self._extract_content()
+        self._filter_invalid_chapters()
+        self._build_text()
 
-        # Build full text with chapter titles
-        full_text = self._build_text()
-        return full_text
+    def _filter_invalid_chapters(self):
+        """过滤无效章节（标题为"未知"、Cover、Contents 等）。"""
+        invalid_patterns = ["未知", "Cover", "作家榜经典文库", "Contents", "目录"]
+        min_content_len = 50  # 内容少于50字符视为无效
+
+        self._chapters = [
+            ch for ch in self._chapters
+            if ch.chapter not in invalid_patterns
+            and len(ch.text.strip()) >= min_content_len
+        ]
+
+        # 重新编号
+        for i, ch in enumerate(self._chapters):
+            ch.id = f"ch_{i}"
+            ch.order = i
 
     def _extract_metadata(self):
         """Extract book metadata from OPF file."""
@@ -110,11 +125,14 @@ class EpubReader(BookReader):
                     title = self._extract_title(content)
 
                     if text.strip():
-                        self._chapters.append({
-                            "title": title or f"Chapter {order + 1}",
-                            "content": text,
-                            "order": order
-                        })
+                        chunk = Chunk(
+                            id=f"ch_{order}",
+                            text=text,
+                            chapter=title or f"Chapter {order + 1}",
+                            order=order,
+                            content_type="other",
+                        )
+                        self._chapters.append(chunk)
                         order += 1
                 except KeyError:
                     continue
@@ -126,14 +144,31 @@ class EpubReader(BookReader):
                         title = self._extract_title(content)
 
                         if text.strip():
-                            self._chapters.append({
-                                "title": title or f"Chapter {order + 1}",
-                                "content": text,
-                                "order": order
-                            })
+                            chunk = Chunk(
+                                id=f"ch_{order}",
+                                text=text,
+                                chapter=title or f"Chapter {order + 1}",
+                                order=order,
+                                content_type="other",
+                            )
+                            self._chapters.append(chunk)
                             order += 1
-                    except:
+                    except Exception:
                         continue
+
+    def _decode_numeric_entity(self, m):
+        """Decode numeric HTML entity."""
+        try:
+            return chr(int(m.group(1)))
+        except Exception:
+            return m.group(0)
+
+    def _decode_hex_entity(self, m):
+        """Decode hex HTML entity."""
+        try:
+            return chr(int(m.group(1), 16))
+        except Exception:
+            return m.group(0)
 
     def _strip_html(self, html: str) -> str:
         """Remove HTML tags from content using a more reliable approach."""
@@ -141,7 +176,7 @@ class EpubReader(BookReader):
             # First, try to parse with XML
             root = ET.fromstring(f"<div>{html}</div>")
             text = ' '.join(root.itertext()).strip()
-        except:
+        except Exception:
             # Fallback to regex if XML parsing fails
             # Remove script and style elements first
             html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
@@ -170,26 +205,12 @@ class EpubReader(BookReader):
 
         return text.strip()
 
-    def _decode_numeric_entity(self, m):
-        """Decode numeric HTML entity."""
-        try:
-            return chr(int(m.group(1)))
-        except:
-            return m.group(0)
-
-    def _decode_hex_entity(self, m):
-        """Decode hex HTML entity."""
-        try:
-            return chr(int(m.group(1), 16))
-        except:
-            return m.group(0)
-
     def _extract_title(self, html: str) -> Optional[str]:
         """Try to extract title from HTML content using XML parsing."""
         try:
             # Parse HTML with XML
             root = ET.fromstring(f"<div>{html}</div>")
-            
+
             # Check title tag first
             for title_elem in root.iter():
                 tag = title_elem.tag.split("}")[-1] if "}" in title_elem.tag else title_elem.tag
@@ -198,7 +219,7 @@ class EpubReader(BookReader):
                         title = title_elem.text.strip()
                         if title:
                             return title
-            
+
             # Check h1 tags
             for h1_elem in root.iter():
                 tag = h1_elem.tag.split("}")[-1] if "}" in h1_elem.tag else h1_elem.tag
@@ -207,7 +228,7 @@ class EpubReader(BookReader):
                         title = h1_elem.text.strip()
                         if title:
                             return title
-            
+
             # Check h2 tags as fallback
             for h2_elem in root.iter():
                 tag = h2_elem.tag.split("}")[-1] if "}" in h2_elem.tag else h2_elem.tag
@@ -216,7 +237,7 @@ class EpubReader(BookReader):
                         title = h2_elem.text.strip()
                         if title:
                             return title
-        except:
+        except Exception:
             # Fallback to regex if XML parsing fails
             # Check title tag
             match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
@@ -234,8 +255,8 @@ class EpubReader(BookReader):
 
         return None
 
-    def _build_text(self) -> str:
-        """Build full text with chapter markers."""
+    def _build_text(self):
+        """Build full text with chapter markers, store in self._text."""
         parts = []
 
         # Add metadata as header
@@ -247,12 +268,22 @@ class EpubReader(BookReader):
         parts.append("\n")
 
         # Add chapters
-        for chapter in self._chapters:
-            parts.append(f"\n## {chapter['title']}\n\n")
-            parts.append(chapter["content"])
+        for chunk in self._chapters:
+            parts.append(f"\n## {chunk.chapter}\n\n")
+            parts.append(chunk.text)
             parts.append("\n\n")
 
-        return "".join(parts)
+        self._text = "".join(parts)
+
+    @property
+    def text(self) -> str:
+        """Return full text content."""
+        return self._text
+
+    @property
+    def read(self) -> str:
+        """Backward compatibility: return full text content."""
+        return self._text
 
     @property
     def title(self) -> str:
@@ -263,5 +294,5 @@ class EpubReader(BookReader):
         return self.metadata.get("creator", "Unknown")
 
     @property
-    def chapters(self) -> list[dict]:
+    def chapters(self) -> list[Chunk]:
         return self._chapters

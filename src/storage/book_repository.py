@@ -130,15 +130,7 @@ class BookRepository:
 
     def save_chunks(self, book_id: str, chunks: List[Chunk]) -> None:
         """保存 chunks 到 JSON 文件"""
-        data = [
-            {
-                "id": c.id,
-                "text": c.text,
-                "chapter": c.chapter,
-                "order": c.order,
-            }
-            for c in chunks
-        ]
+        data = [c.to_dict() for c in chunks]
         self._write_json(self._chunks_file(book_id), data)
 
     def load_chunks(self, book_id: str) -> List[Chunk]:
@@ -146,15 +138,7 @@ class BookRepository:
         try:
             data = self.json_storage.read(self._chunks_file(book_id))
             if isinstance(data, list):
-                return [
-                    Chunk(
-                        id=item.get("id", ""),
-                        text=item.get("text", ""),
-                        chapter=item.get("chapter", ""),
-                        order=item.get("order", 0),
-                    )
-                    for item in data
-                ]
+                return Chunk.from_list(data)
             return []
         except FileNotFoundError:
             return []

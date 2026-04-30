@@ -5,6 +5,7 @@ Extracts text and metadata from PDF files.
 from pathlib import Path
 
 from src.utils.reader import BookReader
+from src.models.chunk import Chunk
 
 
 class PdfReader(BookReader):
@@ -15,7 +16,7 @@ class PdfReader(BookReader):
         self._text: str = ""
         self._title: str = ""
         self._author: str = ""
-        self._chapters: list[dict] = []
+        self._chapters: list[Chunk] = []
         self._metadata: dict = {}
         self._load_pdf()
 
@@ -91,11 +92,12 @@ class PdfReader(BookReader):
 
             if has_chapter:
                 if current_content:
-                    self._chapters.append({
-                        "title": current_chapter or f"Chapter {len(self._chapters) + 1}",
-                        "content": "\n\n".join(current_content),
-                        "order": len(self._chapters)
-                    })
+                    self._chapters.append(Chunk(
+                        id=f"ch_{len(self._chapters)}",
+                        text="\n\n".join(current_content),
+                        chapter=current_chapter or f"Chapter {len(self._chapters) + 1}",
+                        order=len(self._chapters)
+                    ))
                     current_content = []
                 # Use first line as chapter title
                 first_line = para.split("\n")[0][:100]
@@ -109,13 +111,15 @@ class PdfReader(BookReader):
 
         # Don't forget last chapter
         if current_content:
-            self._chapters.append({
-                "title": current_chapter or f"Chapter {len(self._chapters) + 1}",
-                "content": "\n\n".join(current_content),
-                "order": len(self._chapters)
-            })
+            self._chapters.append(Chunk(
+                id=f"ch_{len(self._chapters)}",
+                text="\n\n".join(current_content),
+                chapter=current_chapter or f"Chapter {len(self._chapters) + 1}",
+                order=len(self._chapters)
+            ))
 
-    def read(self) -> str:
+    @property
+    def text(self) -> str:
         return self._text
 
     @property
@@ -127,7 +131,7 @@ class PdfReader(BookReader):
         return self._author
 
     @property
-    def chapters(self) -> list[dict]:
+    def chapters(self) -> list[Chunk]:
         return self._chapters
 
     @property

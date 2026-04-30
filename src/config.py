@@ -15,6 +15,12 @@ class Config:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
 
+    # OpenAI API
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.deepseek.com/v1")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "deepseek-chat")
+
+
     # 服务器配置
     BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8005"))
     HOST = "0.0.0.0"

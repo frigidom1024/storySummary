@@ -64,6 +64,7 @@ def _build_chunks_from_chapters(chapters: list[dict]) -> list[Chunk]:
             id=f"chunk-{i:04d}",
             text=content,
             chapter=title,
-            order=i
+            order=i,
+            content_type=chapter.get("content_type", "other"),
         ))
     return chunks
