@@ -86,6 +86,7 @@ class ManuscriptPipeline:
         # ========== 阶段2：学习风格参考 ==========
         if state.phase == PipelinePhase.STYLE_LEARNING or not self._is_phase_done(book_id, PipelinePhase.STYLE_LEARNING):
             self.style_profile = await self._run_style_phase(book_id, book.title, state, state_path)
+            
             state.phase = PipelinePhase.WRITING
             state.save(state_path)
 
@@ -106,10 +107,16 @@ class ManuscriptPipeline:
 
         await self._report_progress(100, "生成完成")
 
+        all_drafts = manuscript_repository.load_all_drafts(book_id)
+        drafts = [
+            Draft(section_id=k, draft_type=v.get("type", ""), content=v.get("content", ""))
+            for k, v in all_drafts.items()
+        ]
+
         return ManuscriptResult(
             title=book.title,
             book_id=book_id,
-            drafts=list(manuscript_repository.load_all_drafts(book_id).values()),
+            drafts=drafts,
             phase=state.phase.value,
         )
 
@@ -156,7 +163,7 @@ class ManuscriptPipeline:
     async def _run_writing_phase(self, book_id: str, chunks, nodes, state, state_path):
         """阶段3：迭代写草稿 - 遍历 outline 结构，根据类型调用不同 AI"""
         outline_data = manuscript_repository.load_outline(book_id)
-        outline_list = outline_data.get("manuscript_outline", []) if outline_data else []
+        outline_list = outline_data if isinstance(outline_data, list) else []
         style_profile = None
         if manuscript_repository.has_style_profile(book_id):
             profile_dict = manuscript_repository.load_style_profile(book_id)
@@ -237,19 +244,22 @@ class ManuscriptPipeline:
         await self._report_progress(80, "草稿生成完成")
 
     async def _run_polish_phase(self, book_id: str, state, state_path):
-        """阶段4：润色"""
-        await self._report_progress(85, "正在润色全文...")
+        """阶段4：整合草稿为完整口播稿"""
+        await self._report_progress(85, "正在整合口播稿...")
 
         try:
             all_drafts = manuscript_repository.load_all_drafts(book_id)
-            sorted_sections = sorted(all_drafts.keys())
-            full_text = "\n\n---\n\n".join(all_drafts[k]["content"] for k in sorted_sections)
+            drafts_list = list(all_drafts.values())
 
-            chunks = book_repository.load_chunks(book_id)
-            polished = await self.polisher.polish(full_text, chunks)
+            synopsis = manuscript_repository.load_synopsis(book_id) or ""
+            book_info = {
+                "title": state.book_title,
+                "synopsis": synopsis,
+            }
 
-            manuscript_repository.save_final_manuscript(book_id, polished)
+            final_manuscript = await self.polisher.polish(drafts_list, book_info)
+            manuscript_repository.save_final_manuscript(book_id, final_manuscript)
         except Exception as e:
             raise RuntimeError(f"Failed to polish or save manuscript: {e}") from e
 
-        await self._report_progress(95, "润色完成")
+        await self._report_progress(95, "整合完成")

@@ -4,7 +4,7 @@ from typing import Optional
 from langchain.agents import create_agent
 
 from src.core.node_generator import create_llm
-from src.generation.models import ChapterDraft
+from src.generation.agents.models import Draft
 from src.generation.research_tools import ManuscriptResearchToolkit
 from src.logging_config import debug
 from src.models.chunk import Chunk
@@ -25,7 +25,7 @@ class ChapterWriter:
         self,
         chunk: Chunk,
         nodes: list[NarrativeNode],
-        completed_drafts: list[ChapterDraft],
+        completed_drafts: list[Draft],
         book_id: str,
         style_key: Optional[str] = None,
         custom_rules: Optional[str] = None,
@@ -35,7 +35,7 @@ class ChapterWriter:
     ) -> str:
         chapter_title = chunk.chapter or f"第{chunk.order + 1}章"
         nodes_text = self._format_nodes(nodes)
-        last_draft = completed_drafts[-1].chapter_text if completed_drafts else "（无）"
+        last_draft = completed_drafts[-1].content if completed_drafts else "（无）"
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id)
 
         system_prompt = build_style_system_prompt(style_key, custom_rules)
@@ -45,44 +45,19 @@ class ChapterWriter:
             system_prompt += f"\n\n## 原文叙述风格参考\n{narrative_style}"
 
         system_prompt += """
-
-## 增量写作规则
-- 你每次只写当前章节，但必须保持全书叙事一致。
-- 已完成草稿代表既有口吻和视角，优先保持一致。
-- 本章事实以"本章完整原文"为准，不捏造剧情。
-- 直接输出本章口播稿，不加标题，不加解释。"""
+## 写作要求（严格遵守）
+1. 只讲述当前章节的故事内容，像朗读小说一样直接叙述
+2. 完全不做任何评析、不做任何总结、不发表任何个人观点
+3. 可以参考前一章内容保持连贯性，但绝对不要做章节间的衔接
+4. 绝对不要添加"好，咱们接着聊"、"咱们继续"、"这一章啊"等任何开头介绍或承接语
+6. 不要在结尾做总结
+7. 直接开始讲述故事，不要加标题，不要加任何引导语
+8. 用口语化的语言自然流畅地叙述
+"""
 
         user_prompt = f"""
-## 故事结构定位
-当前章节在全书的整体结构中的位置：
-"""
-        if outline:
-            # 找到当前章节在 outline 中的位置
-            current_idx = None
-            for i, section in enumerate(outline):
-                if section.get("type") == "story_content" and section.get("chapter") == chunk.order + 1:
-                    current_idx = i
-                    break
-
-            if current_idx is not None:
-                # 显示前后各2个章节的结构
-                start = max(0, current_idx - 2)
-                end = min(len(outline), current_idx + 3)
-                nearby = outline[start:end]
-
-                outline_text = "\n".join(
-                    f"- {'[当前]' if i == current_idx else ''}{s.get('section', '未知')}：{s.get('description', '')[:50]}..."
-                    for i, s in enumerate(nearby, start=start)
-                )
-                user_prompt += f"\n{nearby[0].get('section', '未知')}前后结构：\n{outline_text}\n"
-        else:
-            user_prompt += "（无大纲信息）"
-
-        user_prompt += f"""
-## 紧邻前文章节尾部（用于衔接语气）
-```上章
+## 前一章内容参考（仅用于了解故事背景，不要衔接）
 {last_draft}
-```
 
 ## 当前章节
 - 标题: {chapter_title}
@@ -96,15 +71,6 @@ class ChapterWriter:
 {chunk.text}
 ```
 """
-        if reference_script:
-            user_prompt += f"""
-## 参考口播稿（仅学习风格）
-以下全文仅供参考，你只需要专心写好当前章节即可，不要受全文结构影响：
-```参考
-{reference_script}
-```
-"""
-
         if self.debug_mode:
             debug("writer", "[WRITE] chapter={} drafts={}", chapter_title, len(completed_drafts))
             debug("writer", "[WRITE] prompt_length={}", len(user_prompt))

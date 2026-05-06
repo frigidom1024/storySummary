@@ -29,8 +29,7 @@ class TxtReader(BookReader):
                 continue
         return self.txt_path.read_text(encoding='utf-8', errors='ignore')
 
-    @property
-    def text(self) -> str:
+    def read(self) -> str:
         return self._text
 
     @property
@@ -42,7 +41,7 @@ class TxtReader(BookReader):
         return self._author
 
     @property
-    def chapters(self) -> list[Chunk]:
+    def chapters(self) -> list[dict]:
         return []
 
     @property

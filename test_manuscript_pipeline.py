@@ -1,8 +1,12 @@
 import asyncio
 import os
+import sys
 
 os.environ['DEEPSEEK_API_KEY'] = 'sk-4ff06504656a45c9b4b60adfdaa16d5c'
 os.environ['DEEPSEEK_API_BASE'] = 'https://api.deepseek.com/v1'
+
+# 设置 UTF-8 输出
+sys.stdout.reconfigure(encoding='utf-8')
 
 from src.generation.pipeline import ManuscriptPipeline
 
@@ -11,7 +15,7 @@ async def test():
 
     pipeline = ManuscriptPipeline(
         output_dir="output",
-        debug_mode=True,
+        debug_mode=False,  # 禁用 debug 避免编码问题
     )
 
     result = await pipeline.run(book_id)

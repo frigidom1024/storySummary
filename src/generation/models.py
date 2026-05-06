@@ -1,26 +1,42 @@
-from pydantic import BaseModel
+"""生成流程相关的数据模型定义（统一入口）"""
 
+# 从 agents.models 导入，保持向后兼容
+from src.generation.agents.models import (
+    Draft,
+    DraftSection,
+    ManuscriptOutline,
+    OutlineResult,
+    StyleProfile,
+    ChapterWriterInput,
+    ChapterWriterOutput,
+    GuideIntroInput,
+    GuideIntroOutput,
+    GuideReflectionInput,
+    GuideReflectionOutput,
+    PolishInput,
+    PolishOutput,
+    ManuscriptResult,
+)
 
-class ChapterDraft(BaseModel):
-    chunk_id: str
-    chapter_text: str
-
-
-class ManuscriptResult(BaseModel):
-    title: str
-    drafts: list[ChapterDraft]
-    phase: str
-    chapters_written: int
-    total_chunks: int
-    intro: str = ""
-    reflection: str = ""
-
-    @property
-    def full_manuscript(self) -> str:
-        parts = []
-        if self.intro:
-            parts.append(self.intro)
-        parts.extend(d.chapter_text for d in self.drafts)
-        if self.reflection:
-            parts.append(self.reflection)
-        return "\n\n---\n\n".join(parts)
+__all__ = [
+    # 统一草稿模型
+    "Draft",
+    "DraftSection",
+    # Outline
+    "ManuscriptOutline",
+    "OutlineResult",
+    # Style
+    "StyleProfile",
+    # Writer
+    "ChapterWriterInput",
+    "ChapterWriterOutput",
+    "GuideIntroInput",
+    "GuideIntroOutput",
+    "GuideReflectionInput",
+    "GuideReflectionOutput",
+    # Polish
+    "PolishInput",
+    "PolishOutput",
+    # Result
+    "ManuscriptResult",
+]
