@@ -28,6 +28,7 @@ class ManuscriptPipeline:
         style_key: str = None,
         custom_rules: str = None,
         reference_script: str = None,
+        target_duration_minutes: float = 15.0,
         progress_callback: Optional[Callable[[int, str], Any]] = None,
     ):
         self.output_dir = output_dir
@@ -35,6 +36,7 @@ class ManuscriptPipeline:
         self.style_key = style_key
         self.custom_rules = custom_rules
         self.reference_script = reference_script
+        self.target_duration_minutes = target_duration_minutes
         self.progress_callback = progress_callback
 
         self.db = Database()
@@ -137,6 +139,7 @@ class ManuscriptPipeline:
             chunks=chunks,
             nodes=nodes,
             reference_script=self.reference_script,
+            target_duration_minutes=self.target_duration_minutes,
         )
 
         # 存储梗概

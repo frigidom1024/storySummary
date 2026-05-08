@@ -1,4 +1,5 @@
 import os
+import random
 from typing import Optional
 
 from langchain.agents import create_agent
@@ -38,14 +39,16 @@ class ChapterWriter:
         last_draft = completed_drafts[-1].content if completed_drafts else "（无）"
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id)
 
-        # 从 outline 中获取主人公名字和原文叙述视角
+        # 从 outline 中获取主人公名字、原文叙述视角和目标长度
         protagonist = "主角"  # 默认值
         original_person = "first"  # 默认假设原文是第一人称
+        target_length = 600  # 默认目标长度
         if outline and isinstance(outline, list):
             for section in outline:
                 if section.get("type") == "story_content" and section.get("chapter") == chunk.order:
                     protagonist = section.get("protagonist", "主角")
                     original_person = section.get("narrative_person", "first")
+                    target_length = section.get("target_length", 600)
                     break
 
         system_prompt = build_style_system_prompt(style_key, custom_rules)
@@ -81,11 +84,21 @@ class ChapterWriter:
 
         # 根据原文叙述视角决定是否需要转换
         conversion_note = f"原文是第一人称叙事，请将'我'转换为'{protagonist}'（即第三人称'他'）" if original_person == "first" else "原文是第三人称叙事，请保持第三人称视角"
+
+        # 随机选取 chunk 中的讨论问题作为思考方向参考
+        discussion_prompts_text = "（无）"
+        if hasattr(chunk, 'discussion_prompts') and chunk.discussion_prompts:
+            prompts = chunk.discussion_prompts
+            # 随机选择1-3个问题
+            num_prompts = min(random.randint(0,2), len(prompts))
+            selected_prompts = random.sample(prompts, num_prompts)
+            discussion_prompts_text = "\n".join(f"- {p}" for p in selected_prompts)
         
         user_prompt = f"""
 ## 故事基本信息
 - 主人公名字: {protagonist}
 - 原文叙述视角: {original_person}
+- 目标长度: {target_length} 字
 
 ## 前一章内容参考（仅用于了解故事背景，不要衔接）
 {last_draft}
@@ -102,8 +115,14 @@ class ChapterWriter:
 {chunk.text}
 ```
 
+## 思考方向参考（随机选取，用于丰富叙述细节）
+{discussion_prompts_text}
+
 ## 叙述视角转换要求
 {conversion_note}。请使用第三人称（他/她/他们）讲述故事，不要使用第一人称（我/我们）。
+
+## 长度要求
+请将输出控制在 {target_length} 字左右，不要过长或过短。
 
 ## 输出格式要求
 请直接输出转换后的第三人称故事叙述，不要包含任何格式标记、标题、注释或其他内容。输出必须是纯文本故事叙述。

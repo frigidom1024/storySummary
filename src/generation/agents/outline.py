@@ -32,8 +32,18 @@ class OutlineAgent:
         nodes: list[NarrativeNode],
         progress_callback: Callable[[str], None] | None = None,
         reference_script: str | None = None,
+        target_duration_minutes: float = 15.0,
     ) -> tuple[str, str]:
-        """返回 (story_synopsis, manuscript_outline_json) 元组，调用者按需取用。"""
+        """返回 (story_synopsis, manuscript_outline_json) 元组，调用者按需取用。
+
+        Args:
+            book_id: 书籍ID
+            chunks: 章节列表
+            nodes: 叙事节点列表
+            progress_callback: 进度回调
+            reference_script: 参考口播稿
+            target_duration_minutes: 目标时长（分钟），默认15分钟
+        """
         def emit(msg: str) -> None:
             if progress_callback:
                 progress_callback(msg)
@@ -65,7 +75,9 @@ class OutlineAgent:
         # 阶段2b：构建口播稿Outline
         emit("[outline] 阶段2b：构建口播稿Outline...")
         manuscript_outline = await self.build_manuscript_outline(
-            chapter_summaries, story_chunks, reference_script, progress_callback=progress_callback
+            chapter_summaries, story_chunks, reference_script,
+            target_duration_minutes=target_duration_minutes,
+            progress_callback=progress_callback
         )
         emit("[outline] 阶段2b 完成")
 
@@ -121,9 +133,20 @@ class OutlineAgent:
         chapter_summaries: str,
         chunks: list[Chunk],
         reference_script: str | None,
+        target_duration_minutes: float = 15.0,
         progress_callback: Callable[[str], None] | None = None,
     ) -> list[dict]:
-        """阶段2b：构建口播稿Outline结构。"""
+        """阶段2b：构建口播稿Outline结构。
+
+        Args:
+            chapter_summaries: 章节摘要文本
+            chunks: 章节列表
+            reference_script: 参考口播稿
+            target_duration_minutes: 目标时长（分钟），默认15分钟
+            progress_callback: 进度回调
+        """
+        total_words = int(target_duration_minutes * 180)
+        chapter_count = len(chunks)
 
         def emit(msg: str) -> None:
             if progress_callback:
@@ -137,20 +160,35 @@ class OutlineAgent:
         system_prompt = f"""你是资深故事编辑，负责生成结构化口播稿大纲。
 
 ## 你的任务
-根据章节摘要，规划口播稿结构（manuscript_outline），并分析叙事人称和主人公信息。
+根据章节摘要，规划口播稿结构（manuscript_outline），包括各部分的目标长度分配。
+
+## 基本信息
+- 目标时长：{target_duration_minutes}分钟
+- 目标总字数：约{total_words}字（按每分钟约180字估算）
+- 章节数量：{chapter_count}章
+
+## 你的职责
+请仔细阅读以下章节摘要，根据内容复杂度、情节重要性和叙事节奏，自主决定各部分的字数分配：
+1. 开篇介绍需要多少字合适（取决于书籍知名度、作者背景等）
+2. 每个故事章节需要多少字（取决于该章节的情节密度和复杂度）
+3. 思考与总结需要多少字（取决于主题深度和需要总结的内容量）
+
+注意：不要使用固定比例，让内容决定长度！
 
 ## 输出格式
 必须输出有效的 JSON 字符串，格式如下：
 {{
   "manuscript_outline": [
-    {{"section": "开篇介绍", "type": "author_intro", "description": "..."}},
-    {{"section": "第X章", "type": "story_content", "chapter": X, "description": "...", "narrative_person": "first/third", "protagonist": "主人公名字"}},
-    {{"section": "思考与总结", "type": "reflection", "description": "..."}}
+    {{"section": "开篇介绍", "type": "author_intro", "description": "...", "target_length": 根据实际需要规划}},
+    {{"section": "第X章", "type": "story_content", "chapter": X, "description": "...", "narrative_person": "first/third", "protagonist": "主人公名字", "target_length": 根据章节复杂度规划}},
+    {{"section": "思考与总结", "type": "reflection", "description": "...", "target_length": 根据主题深度规划}}
   ],
   "metadata": {{
     "tone": "口语化、亲切、故事感",
     "narrative_person": "first/third",
-    "protagonist": "主人公名字"
+    "protagonist": "主人公名字",
+    "total_estimated_length": 总字数（应约等于{total_words}字）,
+    "target_duration_minutes": {target_duration_minutes}
   }}
 }}
 
@@ -169,6 +207,7 @@ class OutlineAgent:
 - story_content 的 chapter 字段必须与摘要中的章节序号一致（0=第一章，1=第二章...）
 - 每个 story_content 必须包含 narrative_person（原文叙述视角）和 protagonist（原文主人公名字）字段
 - metadata 中必须包含 narrative_person（原文叙述视角）和 protagonist（原文主人公名字）字段
+- 各部分 target_length 加总应约等于目标总字数（允许±10%误差）
 - 如果有参考口播稿，学习其风格并调整 metadata.tone{reference_style}
 - 直接输出 JSON，不要包含任何其他内容"""
 
