@@ -52,7 +52,18 @@ class ChapterWriter:
 
         # 添加从参考稿提取的叙述风格
         if narrative_style:
-            system_prompt += f"\n\n## 原文叙述风格参考\n{narrative_style}"
+            system_prompt += f"\n\n## 参考口播稿的风格特点\n{narrative_style}"
+
+        # 添加完整口播稿参考中的故事叙述风格
+        if reference_script:
+            system_prompt += f"""
+
+## 完整口播稿参考（学习其故事叙述风格）
+请学习以下口播稿的故事叙述方式，包括叙述节奏、用词、句式等：
+```
+{reference_script[:3000]}...
+```
+"""
 
         system_prompt += """
 ## 写作要求（严格遵守，违反任何一条将导致任务失败）
