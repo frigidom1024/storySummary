@@ -85,14 +85,23 @@ class ChapterWriter:
         # 根据原文叙述视角决定是否需要转换
         conversion_note = f"原文是第一人称叙事，请将'我'转换为'{protagonist}'（即第三人称'他'）" if original_person == "first" else "原文是第三人称叙事，请保持第三人称视角"
 
-        # 随机选取 chunk 中的讨论问题作为思考方向参考
-        discussion_prompts_text = "（无）"
+        # 随机选取 chunk 中的讨论问题作为思考方向参考（0-2个）
+        discussion_prompts_text = ""
+        selected_prompts = []
         if hasattr(chunk, 'discussion_prompts') and chunk.discussion_prompts:
             prompts = chunk.discussion_prompts
-            # 随机选择1-3个问题
-            num_prompts = min(random.randint(0,2), len(prompts))
-            selected_prompts = random.sample(prompts, num_prompts)
-            discussion_prompts_text = "\n".join(f"- {p}" for p in selected_prompts)
+            # 随机选择0-2个问题（可以不选）
+            num_prompts = min(random.randint(0, 2), len(prompts))
+            if num_prompts > 0:
+                selected_prompts = random.sample(prompts, num_prompts)
+                discussion_prompts_text = "\n".join(f"- {p}" for p in selected_prompts)
+            # 直接打印选中的讨论点
+            if selected_prompts:
+                print(f"\n[WRITER DEBUG] Selected discussion prompts for chapter '{chapter_title}':")
+                for i, prompt in enumerate(selected_prompts, 1):
+                    print(f"  {i}. {prompt}")
+            else:
+                print(f"\n[WRITER DEBUG] No discussion prompts selected for chapter '{chapter_title}'")
         
         user_prompt = f"""
 ## 故事基本信息
@@ -115,7 +124,7 @@ class ChapterWriter:
 {chunk.text}
 ```
 
-## 思考方向参考（随机选取，用于丰富叙述细节）
+## 思考方向（请在叙述中穿插你的主观分析和见解，用括号括起来作为旁白或点评，例如：[这种被动接受的态度，正是存在主义中"荒诞"的体现]，让观众能够清晰地听到你的思考）
 {discussion_prompts_text}
 
 ## 叙述视角转换要求
