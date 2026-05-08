@@ -76,6 +76,7 @@ class ManuscriptPipeline:
             book_id=book_id,
             book_title=book.title,
         )
+        print(state)
 
         # ========== 阶段1：生成梗概和结构 ==========
         if state.phase == PipelinePhase.OUTLINING or not self._is_phase_done(book_id, PipelinePhase.OUTLINING):
@@ -163,6 +164,7 @@ class ManuscriptPipeline:
     async def _run_writing_phase(self, book_id: str, chunks, nodes, state, state_path):
         """阶段3：迭代写草稿 - 遍历 outline 结构，根据类型调用不同 AI"""
         outline_data = manuscript_repository.load_outline(book_id)
+        print("pipeline", "[_run_writing_phase] outline_data: {}", outline_data)
         outline_list = outline_data if isinstance(outline_data, list) else []
         style_profile = None
         if manuscript_repository.has_style_profile(book_id):
@@ -178,6 +180,7 @@ class ManuscriptPipeline:
             nodes_by_chunk[chunk.id] = [n for n in nodes if n.parent_chunk_id == chunk.id]
 
         total_sections = len(outline_list)
+        print("pipeline", "[_run_writing_phase] total_sections: {}", total_sections)
         for i, section in enumerate(outline_list):
             section_id = section.get("section", f"section-{i}")
             section_type = section.get("type")
@@ -209,7 +212,9 @@ class ManuscriptPipeline:
                     completed_drafts = []
                     for d in manuscript_repository.load_all_drafts(book_id).values():
                         try:
-                            completed_drafts.append(Draft(**d))
+                            # 只收集 chapter 类型的草稿，避免 intro/reflection 影响叙述视角
+                            if d.get("type") == "chapter":
+                                completed_drafts.append(Draft(**d))
                         except Exception as e:
                             debug("pipeline", "[_run_writing_phase] Failed to load draft: {}", e)
                     text = await self.writer.write(

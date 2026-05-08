@@ -19,7 +19,7 @@ class ChapterWriter:
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.model = model
         self.debug_mode = debug_mode
-        self.llm = create_llm(api_key=self.api_key, model=self.model, temperature=0.7)
+        self.llm = create_llm(api_key=self.api_key, model=self.model, temperature=0.5)
 
     async def write(
         self,
@@ -38,6 +38,16 @@ class ChapterWriter:
         last_draft = completed_drafts[-1].content if completed_drafts else "（无）"
         tools = ManuscriptResearchToolkit.create_tools(book_id=book_id)
 
+        # 从 outline 中获取主人公名字和原文叙述视角
+        protagonist = "主角"  # 默认值
+        original_person = "first"  # 默认假设原文是第一人称
+        if outline and isinstance(outline, list):
+            for section in outline:
+                if section.get("type") == "story_content" and section.get("chapter") == chunk.order:
+                    protagonist = section.get("protagonist", "主角")
+                    original_person = section.get("narrative_person", "first")
+                    break
+
         system_prompt = build_style_system_prompt(style_key, custom_rules)
 
         # 添加从参考稿提取的叙述风格
@@ -45,17 +55,27 @@ class ChapterWriter:
             system_prompt += f"\n\n## 原文叙述风格参考\n{narrative_style}"
 
         system_prompt += """
-## 写作要求（严格遵守）
-1. 只讲述当前章节的故事内容，像朗读小说一样直接叙述
-2. 完全不做任何评析、不做任何总结、不发表任何个人观点
-3. 可以参考前一章内容保持连贯性，但绝对不要做章节间的衔接
-4. 绝对不要添加"好，咱们接着聊"、"咱们继续"、"这一章啊"等任何开头介绍或承接语
-6. 不要在结尾做总结
-7. 直接开始讲述故事，不要加标题，不要加任何引导语
-8. 用口语化的语言自然流畅地叙述
+## 写作要求（严格遵守，违反任何一条将导致任务失败）
+1. 【强制】必须使用第三人称视角（他/她/他们）讲述故事，绝对禁止使用第一人称（我/我们）
+2. 【强制】将原文中的"我"全部替换为主人公名字或"他"
+3. 只讲述当前章节的故事内容，像朗读小说一样直接叙述
+4. 完全不做任何评析、不做任何总结、不发表任何个人观点
+5. 可以参考前一章内容保持连贯性，但绝对不要做章节间的衔接
+6. 绝对不要添加"好，咱们接着聊"、"咱们继续"、"这一章啊"等任何开头介绍或承接语
+7. 不要在结尾做总结
+8. 直接开始讲述故事，不要加标题，不要加任何引导语
+9. 用口语化的语言自然流畅地叙述
+10. 叙述视角必须保持一致，全程使用第三人称，不要切换视角
 """
 
+        # 根据原文叙述视角决定是否需要转换
+        conversion_note = f"原文是第一人称叙事，请将'我'转换为'{protagonist}'（即第三人称'他'）" if original_person == "first" else "原文是第三人称叙事，请保持第三人称视角"
+        
         user_prompt = f"""
+## 故事基本信息
+- 主人公名字: {protagonist}
+- 原文叙述视角: {original_person}
+
 ## 前一章内容参考（仅用于了解故事背景，不要衔接）
 {last_draft}
 
@@ -70,6 +90,12 @@ class ChapterWriter:
 ```原文
 {chunk.text}
 ```
+
+## 叙述视角转换要求
+{conversion_note}。请使用第三人称（他/她/他们）讲述故事，不要使用第一人称（我/我们）。
+
+## 输出格式要求
+请直接输出转换后的第三人称故事叙述，不要包含任何格式标记、标题、注释或其他内容。输出必须是纯文本故事叙述。
 """
         if self.debug_mode:
             debug("writer", "[WRITE] chapter={} drafts={}", chapter_title, len(completed_drafts))

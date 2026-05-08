@@ -137,29 +137,38 @@ class OutlineAgent:
         system_prompt = f"""你是资深故事编辑，负责生成结构化口播稿大纲。
 
 ## 你的任务
-根据章节摘要，规划口播稿结构（manuscript_outline）。
+根据章节摘要，规划口播稿结构（manuscript_outline），并分析叙事人称和主人公信息。
 
 ## 输出格式
 必须输出有效的 JSON 字符串，格式如下：
 {{
   "manuscript_outline": [
     {{"section": "开篇介绍", "type": "author_intro", "description": "..."}},
-    {{"section": "第X章", "type": "story_content", "chapter": X, "description": "..."}},
+    {{"section": "第X章", "type": "story_content", "chapter": X, "description": "...", "narrative_person": "first/third", "protagonist": "主人公名字"}},
     {{"section": "思考与总结", "type": "reflection", "description": "..."}}
   ],
   "metadata": {{
-    "tone": "口语化、亲切、故事感"
+    "tone": "口语化、亲切、故事感",
+    "narrative_person": "first/third",
+    "protagonist": "主人公名字"
   }}
 }}
 
 ## Section Type 分类
 - author_intro: 作者/书籍介绍
-- story_content: 故事情节内容（必须包含 chapter 编号）
+- story_content: 故事情节内容（chapter 使用摘要中的章节序号，即 0, 1, 2...）
 - reflection: 思考、总结、感悟
+
+## 叙事人称（narrative_person）
+- first: 原文使用第一人称叙事（使用"我"）
+- third: 原文使用第三人称叙事（使用"他/她/他们"）
 
 ## 要求
 - 必须忠于原始章节与叙事节点，不补写不存在的剧情
 - manuscript_outline 必须覆盖所有章节
+- story_content 的 chapter 字段必须与摘要中的章节序号一致（0=第一章，1=第二章...）
+- 每个 story_content 必须包含 narrative_person（原文叙述视角）和 protagonist（原文主人公名字）字段
+- metadata 中必须包含 narrative_person（原文叙述视角）和 protagonist（原文主人公名字）字段
 - 如果有参考口播稿，学习其风格并调整 metadata.tone{reference_style}
 - 直接输出 JSON，不要包含任何其他内容"""
 
@@ -189,7 +198,7 @@ class OutlineAgent:
 
         # 给 story_content 类型添加 chunk_id 字段
         for chunk in chunks:
-            chapter_num = chunk.order + 1
+            chapter_num = chunk.order
             for item in manuscript_outline:
                 if item.get("type") == "story_content" and item.get("chapter") == chapter_num:
                     item["chunk_id"] = chunk.id
@@ -243,9 +252,8 @@ class OutlineAgent:
 
             # 构建批量prompt
             chapter_blocks: list[str] = []
-            for i, chunk in enumerate(batch_chunks):
-                chapter_num = batch_start + i + 1
-                chapter_name = chunk.chapter or f"第{chapter_num}章"
+            for chunk in batch_chunks:
+                chapter_num = chunk.order
                 chapter_nodes = nodes_by_chunk.get(chunk.id, [])
                 node_lines: list[str] = []
                 for n_node in chapter_nodes:
@@ -253,7 +261,7 @@ class OutlineAgent:
                     if line:
                         node_lines.append(line)
                 node_text = "\n".join(node_lines) if node_lines else "- （无节点）"
-                chapter_blocks.append(f"""## {chapter_name}
+                chapter_blocks.append(f"""## 第{chapter_num}章
 节点线索：
 {node_text}
 原文内容：
@@ -262,7 +270,7 @@ class OutlineAgent:
             system_prompt = """你是章节摘要助手。只总结当前章节，不跨章推理。
 - 忠于原文，不补写剧情。
 - 输出紧凑，突出事件推进、关系变化、伏笔信号和章节亮点。
-- 每个章节输出格式：## 第X章: xxx\\n[摘要内容]"""
+- 每个章节输出格式：## X\n[摘要内容]"""
             user_prompt = f"请为以下 {n} 章生成摘要，输出 {n} 个独立章节摘要块：\n\n" + "\n\n".join(chapter_blocks)
 
             response = await self.llm.ainvoke(
@@ -274,7 +282,7 @@ class OutlineAgent:
             batch_summary = (response.content or "").strip()
             if not batch_summary:
                 batch_summary = "\n\n".join(
-                    f"## {chunk.chapter or f'第{batch_start + batch_chunks.index(chunk) + 1}章'}\n- 摘要生成失败"
+                    f"## {chunk.order}\n- 摘要生成失败"
                     for chunk in batch_chunks
                 )
             summaries.append(batch_summary)
