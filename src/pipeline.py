@@ -1,8 +1,5 @@
 import logging
-import uuid
-from pathlib import Path
 from typing import List
-from src.core.chunker import chunk_by_book_id
 from src.core.node_generator import NarrativeNodeGenerator
 from src.core.structure_builder import StructureBuilder
 from src.storage.database import Database
@@ -21,84 +18,16 @@ class NovelToPodcastPipeline:
         vector_store_path: str,
         api_key: str = None,
         model: str = None,
-        user_id: str = None,
         logger: logging.Logger = logger
     ):
         self.api_key = api_key
         self.model = model
-        self.user_id = user_id or "default-user"
         self.node_generator = NarrativeNodeGenerator(api_key=api_key, model=model)
         self.structure_builder = StructureBuilder()
         self.db = Database(db_path)
         self.vector_store = VectorStore(vector_store_path)
-        self.title = None
-        self.book_id = None
 
-    def _ensure_book(self, title: str) -> str:
-        """Ensure a book record exists, return book_id."""
-        if self.book_id is None:
-            # Check if book with this title exists for this user
-            books = self.db.get_books_for_user(self.user_id)
-            for b in books:
-                if b.title == title:
-                    self.book_id = b.id
-                    break
-            else:
-                # Create new book
-                from src.models.book import Book
-                from datetime import datetime
-                self.book_id = str(uuid.uuid4())
-                book = Book(
-                    id=self.book_id,
-                    user_id=self.user_id,
-                    title=title,
-                    author="",
-                    publisher="",
-                    cover_url="",
-                    nodes_file_path=f"data/books/{self.book_id}/nodes.json",
-                    status="processing",
-                    message="",
-                    is_deleted=False,
-                    created_at=datetime.now(),
-                )
-                self.db.create_book(book)
-                # Create book directory
-                book_dir = Path(f"data/books/{self.book_id}")
-                book_dir.mkdir(parents=True, exist_ok=True)
-        return self.book_id
-
-    async def process_file(self, book_path: str) -> dict:
-        """Process a book file (EPUB or PDF) through the pipeline."""
-        from src.utils.reader import read_book
-        import shutil
-
-        reader = read_book(book_path)
-
-        # Create book_id and save file to books directory
-        book_id = self._ensure_book(reader.title)
-        book_dir = Path(f"data/books/{book_id}")
-        book_dir.mkdir(parents=True, exist_ok=True)
-
-        # Copy file to books directory
-        suffix = Path(book_path).suffix.lower()
-        dest_path = book_dir / f"book{suffix}"
-        shutil.copy2(book_path, dest_path)
-
-        # 使用 reader 已经分好的章节作为 chunks
-        # 调用 AI 分类并过滤非故事内容
-        from src.utils.reader import classify_content_types
-        chunks = await classify_content_types(reader.chapters, llm=None)
-
-        # 保留所有章节，但标记 content_type，后续写作 agent 可选择性使用
-        book_repository.save_chunks(book_id, chunks)
-        story_chunks = [ch for ch in chunks if ch.content_type == "story_content"]
-        logger.info(f"[{reader.title}] AI classification: {len(story_chunks)}/{len(chunks)} story chapters")
-
-        return await self.process(story_chunks, reader.title, book_id=book_id)
-
-    async def process(self, chunks: List[Chunk], title: str, book_id: str = None) -> dict:
-        self.title = title
-        book_id = book_id or self._ensure_book(title)
+    async def process(self, chunks: List[Chunk], title: str, book_id: str) -> dict:
         logger.info(f"[{title}] Starting pipeline... (book_id={book_id})")
 
         # chunks 已经是 reader 分好的章节，无需重新分块
@@ -186,39 +115,20 @@ class NovelToPodcastPipeline:
             "nodes": all_nodes,
             "structure": structure
         }
-
-    async def run_writing_agent(self, chunks: list[Chunk], nodes: list[NarrativeNode], title: str, book_id: str = None):
+    
+    # 函数弃用
+    async def run_writing_agent(self, chunks: list[Chunk], nodes: list[NarrativeNode], title: str, book_id: str):
         """Run the podcast writing agent after nodes are generated."""
         from src.generation.podcast_writing_agent import PodcastWritingAgent
-        if book_id is None:
-            book_id = self._ensure_book(title)
         agent = PodcastWritingAgent(
             api_key=self.api_key,
             model=self.model,
         )
         return await agent.run(chunks, nodes, title, book_id)
 
-    async def process_full(self, book_path: str, user_id: str = None):
-        """Run the full pipeline: book → chunks → nodes → podcast manuscript."""
-        from src.utils.reader import read_book
-        import shutil
-
-        if user_id:
-            self.user_id = user_id
-
-        reader = read_book(book_path)
-
-        # Ensure book exists and save file
-        book_id = self._ensure_book(reader.title)
-        book_dir = Path(f"data/books/{book_id}")
-        book_dir.mkdir(parents=True, exist_ok=True)
-
-        suffix = Path(book_path).suffix.lower()
-        dest_path = book_dir / f"book{suffix}"
-        shutil.copy2(book_path, dest_path)
-
-        # Chunk using book_id
-        chunks = chunk_by_book_id(book_id)
+    # 函数弃用
+    async def process_full(self, book_id: str, title: str, chunks: List[Chunk]):
+        """Run the full pipeline: chunks → nodes → podcast manuscript."""
         all_nodes = []
         for i, chunk in enumerate(chunks):
             chunk_id = chunk.id if chunk.id else f"chunk-{i:04d}"
@@ -237,7 +147,6 @@ class NovelToPodcastPipeline:
         structure = self.structure_builder.build(all_nodes)
         self.db.save_structure(book_id, structure)
 
-        # New: write podcast manuscript
-        manuscript = await self.run_writing_agent(chunks, all_nodes, reader.title, book_id)
+        manuscript = await self.run_writing_agent(chunks, all_nodes, title, book_id)
 
         return manuscript

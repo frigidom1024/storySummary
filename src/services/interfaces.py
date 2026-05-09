@@ -39,6 +39,8 @@ class IBookService(ABC):
     @abstractmethod
     def delete_book(self, book_id: str) -> None: ...
 
+    async def process_file(self, book_path: str, user_id: str = "default-user") -> dict: ...
+
 
 class INodeService(ABC):
     @abstractmethod
