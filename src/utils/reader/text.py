@@ -11,7 +11,7 @@ from src.utils.reader import BookReader
 
 
 class TxtReader(BookReader):
-    """Read TXT files with encoding detection, no chapter structure."""
+    """Read TXT files with encoding detection, auto-chunking via AdaptiveChunker."""
 
     def __init__(self, txt_path: str):
         self.txt_path = Path(txt_path)
@@ -19,6 +19,7 @@ class TxtReader(BookReader):
         self._author = "Unknown"
         self._metadata = {}
         self._text = self._read_with_encoding_detection()
+        self._chapters = self._auto_chunk()
 
     def _read_with_encoding_detection(self) -> str:
         encodings = ['utf-8', 'gbk', 'gb2312']
@@ -29,7 +30,20 @@ class TxtReader(BookReader):
                 continue
         return self.txt_path.read_text(encoding='utf-8', errors='ignore')
 
+    def _auto_chunk(self) -> list[Chunk]:
+        """Return text as single chunk, let BookService split it according to max_chunk_chars."""
+        return [Chunk(
+            id="ch_0",
+            text=self._text,
+            chapter=self._title,
+            order=0
+        )]
+
     def read(self) -> str:
+        return self._text
+
+    @property
+    def text(self) -> str:
         return self._text
 
     @property
@@ -41,8 +55,8 @@ class TxtReader(BookReader):
         return self._author
 
     @property
-    def chapters(self) -> list[dict]:
-        return []
+    def chapters(self) -> list[Chunk]:
+        return self._chapters
 
     @property
     def metadata(self) -> dict:
@@ -60,7 +74,7 @@ class TextChunker:
             group = paragraphs[i:i + self.chunk_size]
             chunk_text = "\n\n".join(group)
             chunks.append(Chunk(
-                id=f"chunk-{len(chunks):04d}",
+                id=f"ch_{len(chunks)}",
                 text=chunk_text,
                 order=len(chunks)
             ))
@@ -248,7 +262,7 @@ class SmartChunker:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
         if not paragraphs:
-            return [Chunk(id=f"{chunk_prefix}-0000", text=text.strip(), order=0)]
+            return [Chunk(id=f"ch_0", text=text.strip(), order=0)]
 
         # 检查是否有超长段落，如果有则按句子分割
         paragraphs = self._split_long_paragraphs(paragraphs)
@@ -343,7 +357,7 @@ class SmartChunker:
                 chunk_text = "\n\n".join(current_chunk)
                 if len(chunk_text) >= self.min_chunk_chars:
                     chunks.append(Chunk(
-                        id=f"{chunk_prefix}-{order:04d}",
+                        id=f"ch_{order}",
                         text=chunk_text,
                         chapter=f"片段 {order + 1}",
                         order=order
@@ -358,7 +372,7 @@ class SmartChunker:
             if current_size >= self.ideal_chunk_chars and len(current_chunk) >= 2:
                 chunk_text = "\n\n".join(current_chunk)
                 chunks.append(Chunk(
-                    id=f"{chunk_prefix}-{order:04d}",
+                    id=f"ch_{order}",
                     text=chunk_text,
                     chapter=f"片段 {order + 1}",
                     order=order
@@ -370,7 +384,7 @@ class SmartChunker:
         if current_chunk:
             chunk_text = "\n\n".join(current_chunk)
             chunks.append(Chunk(
-                id=f"{chunk_prefix}-{order:04d}",
+                id=f"ch_{order}",
                 text=chunk_text,
                 chapter=f"片段 {order + 1}",
                 order=order
@@ -394,7 +408,7 @@ class SmartChunker:
                 if len(chunk_text) >= self.min_chunk_chars:
                     label = current_chapter or current_section or f"章节 {order + 1}"
                     chunks.append(Chunk(
-                        id=f"{chunk_prefix}-{order:04d}",
+                        id=f"ch_{order}",
                         text=chunk_text,
                         chapter=label,
                         order=order

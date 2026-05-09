@@ -235,5 +235,5 @@ Output ONLY the JSON array in your response, no explanation."""
             except json.JSONDecodeError:
                 pass
 
-        logger.warning(f"Failed to parse beats from output: {content[:200]}")
+        logger.warning(f"Failed to parse beats from output: {content}")
         return []

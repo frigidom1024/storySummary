@@ -18,31 +18,36 @@ class FileManager:
 
     def save_book_file(self, book_id: str, file_bytes: bytes, ext: str) -> str:
         """Save book file and return the path."""
-        file_path = os.path.join(self.BASE_DIR, f"{book_id}.{ext}")
+        book_dir = os.path.join(self.BOOKS_DIR, book_id)
+        os.makedirs(book_dir, exist_ok=True)
+        file_path = os.path.join(book_dir, f"book.{ext}")
         with open(file_path, 'wb') as f:
             f.write(file_bytes)
         return file_path
 
     def get_book_file(self, book_id: str) -> Optional[tuple[str, str]]:
         """Get book file path and extension. Returns (path, ext) or None."""
+        book_dir = os.path.join(self.BOOKS_DIR, book_id)
         for ext in ['epub', 'txt']:
-            file_path = os.path.join(self.BASE_DIR, f"{book_id}.{ext}")
+            file_path = os.path.join(book_dir, f"book.{ext}")
             if os.path.exists(file_path):
                 return file_path, ext
         return None
 
     def book_file_exists(self, book_id: str) -> bool:
         """Check if book file exists."""
+        book_dir = os.path.join(self.BOOKS_DIR, book_id)
         for ext in ['epub', 'txt']:
-            if os.path.exists(os.path.join(self.BASE_DIR, f"{book_id}.{ext}")):
+            if os.path.exists(os.path.join(book_dir, f"book.{ext}")):
                 return True
         return False
 
     def delete_book_file(self, book_id: str) -> bool:
         """Delete book file. Returns True if deleted."""
         deleted = False
+        book_dir = os.path.join(self.BOOKS_DIR, book_id)
         for ext in ['epub', 'txt']:
-            file_path = os.path.join(self.BASE_DIR, f"{book_id}.{ext}")
+            file_path = os.path.join(book_dir, f"book.{ext}")
             if os.path.exists(file_path):
                 os.remove(file_path)
                 deleted = True

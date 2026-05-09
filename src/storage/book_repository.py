@@ -70,16 +70,19 @@ class BookRepository:
     # === Book Files ===
 
     def save_book_file(self, book_id: str, file_bytes: bytes, ext: str) -> str:
-        """保存书籍文件"""
-        file_path = self.base_dir / f"{book_id}.{ext}"
+        """保存书籍文件到书籍目录"""
+        book_dir = self._book_dir(book_id)
+        book_dir.mkdir(parents=True, exist_ok=True)
+        file_path = book_dir / f"book.{ext}"
         with open(file_path, 'wb') as f:
             f.write(file_bytes)
         return str(file_path)
 
     def get_book_file(self, book_id: str) -> Optional[tuple[str, str]]:
         """获取书籍文件路径和扩展名，返回 (path, ext) 或 None"""
+        book_dir = self._book_dir(book_id)
         for ext in ['epub', 'txt', 'pdf']:
-            file_path = self.base_dir / f"{book_id}.{ext}"
+            file_path = book_dir / f"book.{ext}"
             if file_path.exists():
                 return str(file_path), ext
         return None
@@ -91,8 +94,9 @@ class BookRepository:
     def delete_book_file(self, book_id: str) -> bool:
         """删除书籍文件"""
         deleted = False
+        book_dir = self._book_dir(book_id)
         for ext in ['epub', 'txt', 'pdf']:
-            file_path = self.base_dir / f"{book_id}.{ext}"
+            file_path = book_dir / f"book.{ext}"
             if file_path.exists():
                 file_path.unlink()
                 deleted = True

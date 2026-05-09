@@ -8,6 +8,7 @@ class Chunk(BaseModel):
     chapter: Optional[str] = None
     order: int = 0
     content_type: Optional[str] = None  # story_content / appendix / author_intro / other
+    parent_chapter_id: Optional[str] = None  # 用于标识子章节所属的原章节
 
     # agent3_interesting_finder.py 中负责维护的扩展字段
     discussion_prompts: list[str] = Field(default_factory=list, description="Discussion anchors for podcast")
