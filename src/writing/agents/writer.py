@@ -4,9 +4,9 @@ from typing import Optional
 
 from langchain.agents import create_agent
 
-from src.core.node_generator import create_llm
-from src.generation.agents.models import Draft
-from src.generation.research_tools import ManuscriptResearchToolkit
+from src.analysis.node_generator import create_llm
+from src.writing.agents.models import Draft
+from src.writing.research_tools import ManuscriptResearchToolkit
 from src.logging_config import debug
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
@@ -107,6 +107,7 @@ class ChapterWriter:
 ## 故事基本信息
 - 主人公名字: {protagonist}
 - 原文叙述视角: {original_person}
+- 目标长度: {target_length} 字
 
 ## 前一章内容参考（仅用于了解故事背景，不要衔接）
 {last_draft}
@@ -128,6 +129,9 @@ class ChapterWriter:
 
 ## 叙述视角转换要求
 {conversion_note}。请使用第三人称（他/她/他们）讲述故事，不要使用第一人称（我/我们）。
+
+## 长度要求
+请将输出控制在 {target_length} 字左右，不要过长或过短。
 
 ## 输出格式要求
 请直接输出转换后的第三人称故事叙述，不要包含任何格式标记、标题、注释或其他内容。输出必须是纯文本故事叙述。

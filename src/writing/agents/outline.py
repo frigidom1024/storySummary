@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.core.node_generator import create_llm
+from src.analysis.node_generator import create_llm
 from src.logging_config import debug
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode

@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 import json
 from dotenv import load_dotenv
-from src.pipeline import NovelToPodcastPipeline
+from src.analysis.pipeline import NovelToPodcastPipeline
 from src.logging_config import setup_logger
 
 

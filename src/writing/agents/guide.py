@@ -6,7 +6,7 @@ from typing import Optional
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.core.node_generator import create_llm
+from src.analysis.node_generator import create_llm
 from src.logging_config import debug
 from src.models.chunk import Chunk
 from src.models.narrative_node import NarrativeNode
@@ -20,24 +20,22 @@ class GuideAgent:
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.model = model
         self.debug_mode = debug_mode
-        self.llm = create_llm(api_key=self.api_key, model=self.model, temperature=0.7, max_tokens=4000)
+        self.llm = create_llm(api_key=self.api_key, model=self.model, temperature=0.7)
 
     async def write_intro(
         self,
         book_id: str,
-        chunk: Chunk = None,
+        chunk: Chunk,
         style_key: Optional[str] = None,
         intro_style: Optional[str] = None,
-        book_title: str = None,
     ) -> str:
         """生成开篇介绍
 
         Args:
             book_id: 书籍ID
-            chunk: 包含书籍信息的 chunk（可选）
+            chunk: 包含书籍信息的 chunk（如有）
             style_key: 风格配置
             intro_style: 开篇介绍风格
-            book_title: 书籍标题（当 chunk 不可用时使用）
 
         Returns:
             生成的开篇介绍文本
@@ -60,16 +58,13 @@ class GuideAgent:
 - 禁止添加任何收尾性语句（如"下期再见"等）
 - 以第三人称叙述，不代入故事角色"""
 
-        title = book_title or (chunk.chapter if chunk else None) or "未知"
-        content_preview = chunk.text[:500] + "..." if chunk and chunk.text else ""
-
         user_prompt = f"""请生成一段口播稿开篇介绍。
 
 书籍信息：
-- 书名: {title}
-- 内容预览: {content_preview if content_preview else "无预览内容"}
+- 书名: {chunk.chapter or "未知"}
+- 内容: {chunk.text[:500]}{"..." if len(chunk.text) > 500 else ""}
 
-请使用搜索工具查询作者信息和书籍背景。
+你可以使用搜索工具查询作者信息和书籍背景。
 
 直接输出开篇介绍内容，不要包含任何其他内容。"""
 
@@ -90,21 +85,19 @@ class GuideAgent:
     async def write_reflection(
         self,
         book_id: str,
-        chunk: Chunk = None,
-        completed_drafts: list[str] = None,
+        chunk: Chunk,
+        completed_drafts: list[str],
         style_key: Optional[str] = None,
         reflection_style: Optional[str] = None,
-        book_title: str = None,
     ) -> str:
         """生成总结思考
 
         Args:
             book_id: 书籍ID
-            chunk: 包含书籍信息的 chunk（可选）
+            chunk: 包含书籍信息的 chunk（如有）
             completed_drafts: 已完成的口播稿章节列表
             style_key: 风格配置
             reflection_style: 总结思考风格
-            book_title: 书籍标题（当 chunk 不可用时使用）
 
         Returns:
             生成的总结思考文本
@@ -128,15 +121,13 @@ class GuideAgent:
 - 禁止添加任何收尾性语句（如"下期再见"等）
 - 以第三人称叙述，不代入故事角色"""
 
-        title = book_title or (chunk.chapter if chunk else None) or "未知"
-
         user_prompt = f"""请基于全书口播稿内容，生成一段总结和思考。
 
 书籍信息：
-- 书名: {title}
+- 书名: {chunk.chapter or "未知"}
 
 全书口播稿内容：
-{full_manuscript if full_manuscript else "（暂无正文内容）"}
+{full_manuscript}
 
 直接输出总结思考内容，不要包含任何其他内容。"""
 
@@ -155,28 +146,27 @@ class GuideAgent:
         from langchain_core.tools import tool
 
         @tool
-        def search_author_info(query: str) -> str:
-            """搜索作者和书籍相关信息
+        def search_author_info(author_name: str) -> str:
+            """搜索作者相关信息
 
             Args:
-                query: 搜索查询词
+                author_name: 作者姓名
             """
-            try:
-                from duckduckgo_search import DDGS
-                results = []
-                with DDGS() as ddgs:
-                    for r in ddgs.text(query, max_results=3):
-                        title = r.get("title", "")
-                        body = r.get("body", "")
-                        if title and body:
-                            results.append(f"{title}\n{body}")
-                if results:
-                    return "\n\n".join(results)
-                return f"未找到关于 '{query}' 的搜索结果"
-            except Exception as e:
-                return f"搜索失败: {str(e)}"
+            # 实际实现需要接入搜索服务
+            # 这里返回模拟数据占位
+            return f"作者信息搜索: {author_name}。建议搜索作者生平、创作风格、重要作品等。"
 
-        return [search_author_info]
+        @tool
+        def search_book_background(book_title: str) -> str:
+            """搜索书籍背景信息
+
+            Args:
+                book_title: 书名
+            """
+            # 实际实现需要接入搜索服务
+            return f"书籍背景搜索: {book_title}。建议搜索创作背景、文学评价、社会影响等。"
+
+        return [search_author_info, search_book_background]
 
     def _extract_output(self, response) -> str:
         if hasattr(response, 'content'):

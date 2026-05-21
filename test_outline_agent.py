@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from src.generation.agents.outline import OutlineAgent
+from src.writing.agents.outline import OutlineAgent
 from src.storage.book_repository import BookRepository
 
 

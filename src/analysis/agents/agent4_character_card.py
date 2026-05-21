@@ -25,7 +25,7 @@ class CharacterUpdateResult(BaseModel):
 
 def create_character_tools(book_id: str):
     """创建 Agent4 工具"""
-    from src.core.tools.tool_executor import get_previous_chunk_nodes_impl
+    from src.analysis.tools.tool_executor import get_previous_chunk_nodes_impl
 
     @tool
     def get_previous_chunk_nodes() -> str:
@@ -219,26 +219,23 @@ Current chunk text (原文，用于更准确的角色分析):
 
 
     def _apply_updates(self, nodes: list[dict], updates: list[CharacterUpdateResult]) -> None:
-        """应用 LLM 输出的更新到角色卡片（支持名称归一化）"""
+        """应用 LLM 输出的更新到角色卡片"""
         for update in updates:
             char_name = update.character
             if not char_name:
                 continue
 
-            # 归一化角色名称
-            normalized_name = self._normalize_character_name(char_name)
-
-            # 获取或创建卡片（使用归一化后的名称）
-            if normalized_name not in self.characters:
+            # 获取或创建卡片
+            if char_name not in self.characters:
                 first_node = self._find_node_for_character(nodes, char_name)
-                self.characters[normalized_name] = CharacterCard(
-                    character_id=normalized_name,
-                    name=normalized_name,
+                self.characters[char_name] = CharacterCard(
+                    character_id=char_name,
+                    name=char_name,
                     first_seen=first_node.get("id", "") if first_node else "",
                     first_seen_scene=first_node.get("scene", "")[:200] if first_node else ""
                 )
 
-            card = self.characters[normalized_name]
+            card = self.characters[char_name]
 
             # 更新情绪
             if update.emotional_state:
@@ -248,12 +245,11 @@ Current chunk text (原文，用于更准确的角色分析):
             # 更新出场次数
             card.increment_appearance()
 
-            # 处理互动（目标角色也需要归一化）
+            # 处理互动
             for interaction in update.interactions:
                 if interaction.get("target"):
-                    normalized_target = self._normalize_character_name(interaction["target"])
                     card.add_interaction(
-                        target=normalized_target,
+                        target=interaction["target"],
                         interaction_type=interaction.get("type", "neutral"),
                         intensity_delta=interaction.get("intensity_delta", 0.0),
                         node_id=self._find_node_id_for_character(nodes, char_name) or "",
@@ -267,30 +263,11 @@ Current chunk text (原文，用于更准确的角色分析):
                     card.add_key_event(node_id)
 
 
-    def _normalize_character_name(self, name: str) -> str:
-        """归一化角色名称，处理昵称和别名"""
-        if not name:
-            return name
-        
-        name = name.strip()
-        
-        name_mapping = {
-            "托德": "托德·鲍登",
-            "杜山德": "亚瑟·登克尔/古特·杜山德",
-            "登克尔": "亚瑟·登克尔/古特·杜山德",
-            "亚瑟·登克尔": "亚瑟·登克尔/古特·杜山德",
-            "古特·杜山德": "亚瑟·登克尔/古特·杜山德",
-        }
-        
-        return name_mapping.get(name, name)
-
     def _find_node_for_character(self, nodes: list[dict], char_name: str) -> Optional[dict]:
-        """查找包含该角色的第一个节点（支持名称变体）"""
-        normalized_name = self._normalize_character_name(char_name)
+        """查找包含该角色的第一个节点"""
         for node in nodes:
             for c in node.get("characters", []):
-                c_name = self._normalize_character_name(c.get("name"))
-                if c_name == normalized_name or c.get("name") == char_name:
+                if c.get("name") == char_name:
                     return node
         return None
 
@@ -302,28 +279,24 @@ Current chunk text (原文，用于更准确的角色分析):
 
 
     def _increment_all_appearances(self, nodes: list[dict]) -> None:
-        """降级处理：仅为所有角色增加出场次数（支持名称归一化）"""
+        """降级处理：仅为所有角色增加出场次数"""
         for node in nodes:
             node_id = node.get("id", "")
             for c in node.get("characters", []):
                 name = c.get("name", "")
                 if not name:
                     continue
-                
-                # 归一化角色名称
-                normalized_name = self._normalize_character_name(name)
-                
-                if normalized_name not in self.characters:
-                    self.characters[normalized_name] = CharacterCard(
-                        character_id=normalized_name,
-                        name=normalized_name,
+                if name not in self.characters:
+                    self.characters[name] = CharacterCard(
+                        character_id=name,
+                        name=name,
                         first_seen=node_id,
                         first_seen_scene=node.get("scene", "")[:200]
                     )
-                self.characters[normalized_name].increment_appearance()
+                self.characters[name].increment_appearance()
                 # 高 importance 标记为关键事件
                 if node.get("importance", 0) >= 0.8:
-                    self.characters[normalized_name].add_key_event(node_id)
+                    self.characters[name].add_key_event(node_id)
 
     def get_all_characters(self) -> list[dict]:
         """获取所有角色卡片列表

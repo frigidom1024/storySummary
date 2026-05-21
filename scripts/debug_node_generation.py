@@ -75,7 +75,7 @@ async def phase1_test_beat_extraction():
     """Phase 1: 测试基础节点提取"""
     print_section("Phase 1: 节点提取 (Beat Extraction)")
 
-    from src.core.node_generator import NarrativeNodeGenerator
+    from src.analysis.node_generator import NarrativeNodeGenerator
     from src.models.chunk import Chunk
 
     print(f"\n输入文本长度: {len(TEST_TEXT)} 字符")
@@ -121,7 +121,7 @@ async def phase2_test_time_anchor(prev_nodes=None):
 
     print(f"\n输入: {len(prev_nodes)} 个节点")
 
-    from src.core.time_anchor_resolver import TimeAnchorResolver
+    from src.analysis.time_anchor_resolver import TimeAnchorResolver
 
     resolver = TimeAnchorResolver()
 
@@ -166,7 +166,7 @@ async def phase3_test_graph_builder(prev_nodes=None, time_anchors=None):
 
     print(f"\n输入: {len(prev_nodes)} 个节点, {len(time_anchors)} 个时间锚点")
 
-    from src.core.graph_builder import GraphBuilder
+    from src.analysis.graph_builder import GraphBuilder
 
     builder = GraphBuilder()
 

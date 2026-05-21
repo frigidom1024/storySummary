@@ -3,9 +3,9 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Optional, Callable
-from src.core.chunker import chunk_by_book_id
-from src.core.node_generator import NarrativeNodeGenerator
-from src.core.structure_builder import StructureBuilder
+from src.analysis.chunker import chunk_by_book_id
+from src.analysis.node_generator import NarrativeNodeGenerator
+from src.analysis.structure_builder import StructureBuilder
 from src.storage.database import Database
 from src.storage.vector_store import VectorStore
 from src.storage.book_repository import book_repository

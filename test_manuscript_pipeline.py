@@ -8,7 +8,7 @@ os.environ['DEEPSEEK_API_BASE'] = 'https://api.deepseek.com/v1'
 # 设置 UTF-8 输出
 sys.stdout.reconfigure(encoding='utf-8')
 
-from src.generation.pipeline import ManuscriptPipeline
+from src.writing.pipeline import ManuscriptPipeline
 
 async def test():
     book_id = "66ffedc5-fd54-43ff-acb7-879876243c94"

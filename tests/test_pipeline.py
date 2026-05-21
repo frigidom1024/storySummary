@@ -8,7 +8,7 @@ import shutil
 import os
 from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage
-from src.pipeline import NovelToPodcastPipeline
+from src.analysis.pipeline import NovelToPodcastPipeline
 from src.models.narrative_node import NarrativeNode, CharacterState, RelationshipStateChange
 
 

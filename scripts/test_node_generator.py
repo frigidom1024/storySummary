@@ -9,7 +9,7 @@ load_dotenv(os.path.join(root_dir, ".env"))
 
 import asyncio
 from langchain_openai import ChatOpenAI
-from src.core.node_generator import NarrativeNodeGenerator
+from src.analysis.node_generator import NarrativeNodeGenerator
 from src.models.chunk import Chunk
 from src.prompts.base_node import BASE_NODE_PROMPT
 from src.logging_config import debug

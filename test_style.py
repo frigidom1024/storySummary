@@ -6,7 +6,7 @@ import traceback
 os.environ['DEEPSEEK_API_KEY'] = 'sk-4ff06504656a45c9b4b60adfdaa16d5c'
 os.environ['DEEPSEEK_API_BASE'] = 'https://api.deepseek.com/v1'
 
-from src.generation.agents.style import StyleLearningAgent
+from src.writing.agents.style import StyleLearningAgent
 
 async def test():
     try:

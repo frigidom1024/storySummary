@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.generation.outline_agent import OutlineAgent
-from src.generation.style_agent import StyleLearningAgent
+from src.writing.agents.outline import OutlineAgent
+from src.writing.agents.style import StyleLearningAgent
 from src.storage.book_storage import BookStorage
 
 

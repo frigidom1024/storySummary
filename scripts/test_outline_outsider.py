@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.generation.outline_agent import OutlineAgent
+from src.writing.agents.outline import OutlineAgent
 from src.storage.book_storage import BookStorage
 
 

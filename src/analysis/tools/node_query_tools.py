@@ -6,7 +6,7 @@ These functions are declaration-only. Runtime implementations are in
 
 from langchain_core.tools import tool
 from src.models.narrative_node import ToolResponseNode, VectorSearchNode
-from src.core.tools.tool_executor import get_previous_chunk_nodes_impl, search_nodes_impl, get_thread_last_node_impl
+from src.analysis.tools.tool_executor import get_previous_chunk_nodes_impl, search_nodes_impl, get_thread_last_node_impl
 
 def _inject_docs(func):
     """Inject real documentation into tool description at import time."""

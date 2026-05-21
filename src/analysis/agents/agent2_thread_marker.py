@@ -26,7 +26,7 @@ def create_llm(api_key: str = None, model: str = None, api_base: str = None, **k
 @tool
 def search_nodes(keyword: str, book_id: str = None) -> str:
     """Search nodes by character name or keyword."""
-    from src.core.tools.tool_executor import search_nodes_impl
+    from src.analysis.tools.tool_executor import search_nodes_impl
     result = search_nodes_impl(book_id=book_id, keyword=keyword) if book_id else []
     return json.dumps(result, ensure_ascii=False)
 

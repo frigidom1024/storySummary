@@ -4,7 +4,7 @@ from typing import Optional
 from langchain.agents import create_agent
 from pydantic import BaseModel
 
-from src.core.node_generator import create_llm
+from src.analysis.node_generator import create_llm
 from src.logging_config import debug
 
 

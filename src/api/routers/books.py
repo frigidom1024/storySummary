@@ -408,7 +408,7 @@ async def _run_manuscript_generation(
     reference_script: str = None
 ):
     """在后台运行口播稿生成，通过 WebSocket 发送进度"""
-    from src.generation.pipeline import ManuscriptPipeline
+    from src.writing.pipeline import ManuscriptPipeline
 
     async def progress_callback(progress: int, message: str):
         await manager.send_progress(book_id, progress, message, "processing", "manuscript")
