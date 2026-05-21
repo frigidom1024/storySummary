@@ -26,7 +26,7 @@ class BookService(IBookService):
         
         if not text or len(text) <= self.max_chunk_chars:
             return [Chunk(
-                id=f"ch_{order_start}",
+                id=f"{chunk_prefix}-{order_start:04d}",
                 text=text.strip(),
                 order=order_start
             )]
@@ -62,7 +62,7 @@ class BookService(IBookService):
                 current_text += sentence
             else:
                 chunks.append(Chunk(
-                    id=f"ch_{current_order}",
+                    id=f"{chunk_prefix}-{current_order:04d}",
                     text=current_text.strip(),
                     order=current_order
                 ))
@@ -82,7 +82,7 @@ class BookService(IBookService):
         
         if current_text.strip():
             chunks.append(Chunk(
-                id=f"ch_{current_order}",
+                id=f"{chunk_prefix}-{current_order:04d}",
                 text=current_text.strip(),
                 order=current_order
             ))
@@ -168,8 +168,14 @@ class BookService(IBookService):
         self.max_chunk_chars = current_max_chunk
 
         try:
-            chunks = self._split_long_chapters(reader.chapters)
-            logger.info(f"[{reader.title}] Split {len(reader.chapters)} chapters into {len(chunks)} sub-chapters (max={current_max_chunk} chars)")
+            if reader.chapters:
+                chunks = self._split_long_chapters(reader.chapters)
+                logger.info(f"[{reader.title}] Split {len(reader.chapters)} chapters into {len(chunks)} sub-chapters (max={current_max_chunk} chars)")
+            else:
+                from src.utils.reader.text import AdaptiveChunker
+                text = reader.text if hasattr(reader, 'text') else str(reader)
+                chunks = AdaptiveChunker().chunk(text)
+                logger.info(f"[{reader.title}] No chapters found, auto-chunked into {len(chunks)} parts")
 
             chunks = await classify_content_types(chunks, llm=None)
 
